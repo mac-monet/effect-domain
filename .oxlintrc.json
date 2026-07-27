@@ -1,0 +1,13 @@
+{
+  "rules": {
+    "no-explicit-any": "error",
+    "no-non-null-assertion": "error",
+    "no-unsafe-type-assertion": "error",
+    "no-unnecessary-type-assertion": "warn",
+    "no-unsafe-argument": "error",
+    "no-unsafe-assignment": "error",
+    "no-unsafe-call": "error",
+    "no-unsafe-return": "error",
+    "prefer-as-const": "error"
+  }
+}

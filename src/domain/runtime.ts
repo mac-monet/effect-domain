@@ -1,0 +1,411 @@
+import { Effect, type Layer, Schema, Stream } from "effect";
+import type { AnyOperationDef } from "../define.ts";
+import type { DynamicCodec } from "../schema/codec.ts";
+import {
+  argsSchemaFor,
+  type BoundaryDecoded,
+  decodeBoundary,
+  type DispatchOptions,
+  type DispatchRequest,
+  GatewayError,
+  liftBoundaryStreamToResult,
+  liftBoundaryToResult,
+  OperationError,
+} from "../gateway.ts";
+import type { DomainInstance, RuntimeBindConfig } from "./interface.ts";
+import { inspect as inspectOperations } from "../inspect.ts";
+import {
+  type Invocation,
+  type InvocationKeyOptions,
+  invocationKey,
+  selectionsEqual,
+} from "../invocation-key.ts";
+import { buildRegistry, type NodeRegistry } from "../registry.ts";
+import { buildTopology, type DomainTopology } from "./topology.ts";
+import { rootToResponseSchema } from "../response/codec.ts";
+import { analyzeSelection } from "../selection/analyze.ts";
+import type { Selection } from "../selection/syntax.ts";
+import { selectionKeys } from "../selection/syntax.ts";
+import { rootToSelectionSchema, type RootSelectionCodec } from "../selection/schema.ts";
+import {
+  makeReadSetCollector,
+  type ReadSetCollector,
+  walkRoot,
+  type WalkContext,
+} from "../walk.ts";
+import { ResultCodec } from "../schema/result.ts";
+
+class DomainInvariantError extends Error {}
+
+type PublicSchemaCodec = Schema.Codec<unknown, unknown, never, never>;
+
+// Only name→schema lookups are per-graph (operation names are graph-scoped).
+// AST-keyed codec/plan caches are module-global WeakMaps in their own modules.
+interface DomainCaches {
+  readonly args: Map<string, Schema.Decoder<unknown>>;
+  readonly selection: Map<string, RootSelectionCodec>;
+  readonly topology: { value: DomainTopology | undefined };
+}
+
+function makeDomainCaches(): DomainCaches {
+  return {
+    args: new Map(),
+    selection: new Map(),
+    topology: { value: undefined },
+  };
+}
+
+function bindingConfig(
+  methodName: string,
+  config: RuntimeBindConfig,
+): { readonly name: string; readonly select?: Selection } {
+  const entry = config[methodName];
+  return {
+    name: entry?.to ?? methodName,
+    ...(entry?.select !== undefined ? { select: entry.select } : {}),
+  };
+}
+
+function publicSchemaCodec(codec: DynamicCodec): PublicSchemaCodec {
+  return codec;
+}
+
+// AnyOperationDef keeps args contravariant as `never` so concrete operation
+// resolvers remain assignable after erasure. Typed execute/bind calls pass the
+// statically-checked args slot; dispatch calls pass the boundary-decoded args.
+function erasedOperationArgs(args: unknown): never {
+  return args as never;
+}
+
+function domainFacade<Ops extends Record<string, AnyOperationDef>, Provided, ProvidedE, ProvidedR>(
+  facade: Record<string, unknown> & { readonly operations: Ops },
+): DomainInstance<Ops, Provided, ProvidedE, ProvidedR> {
+  // The runtime facade is implemented with broad string/unknown methods; the
+  // exported Domain interface supplies the precise operation-name/result typing.
+  return facade as unknown as DomainInstance<Ops, Provided, ProvidedE, ProvidedR>;
+}
+
+export function makeDomain<const Ops extends Record<string, AnyOperationDef>>(
+  ops: Ops,
+): DomainInstance<Ops> {
+  return makeDomainWithLayers(ops, [], makeDomainCaches(), buildRegistry(ops));
+}
+
+function makeDomainWithLayers<
+  const Ops extends Record<string, AnyOperationDef>,
+  Provided = never,
+  ProvidedE = never,
+  ProvidedR = never,
+>(
+  ops: Ops,
+  layers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>,
+  caches: DomainCaches,
+  registry: NodeRegistry,
+): DomainInstance<Ops, Provided, ProvidedE, ProvidedR> {
+  type InternalResult = unknown;
+
+  function toStream(
+    op: AnyOperationDef,
+    config: { args?: unknown; select?: Selection; concurrency?: number | "unbounded" },
+    reads?: ReadSetCollector,
+  ): Stream.Stream<InternalResult, unknown, unknown> {
+    const selections = config.select ? selectionKeys(config.select) : new Set<string>();
+    const ctx: WalkContext = {
+      concurrency: config.concurrency ?? "unbounded",
+      registry,
+      ...(reads !== undefined ? { reads } : {}),
+    };
+    const rawStream = op.resolve({ args: erasedOperationArgs(config.args), selections });
+
+    return Stream.mapEffect(rawStream, (value) => walkRoot(value, op.type.ast, config.select, ctx));
+  }
+
+  function applyLayers<A, E, R>(eff: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> {
+    return layers.reduce((acc, layer) => Effect.provide(acc, layer) as Effect.Effect<A, E, R>, eff);
+  }
+
+  function applyLayersStream<A, E, R>(s: Stream.Stream<A, E, R>): Stream.Stream<A, E, R> {
+    return layers.reduce((acc, layer) => Stream.provide(acc, layer) as Stream.Stream<A, E, R>, s);
+  }
+
+  type InternalConfig = {
+    args?: unknown;
+    select?: Selection;
+    concurrency?: number | "unbounded";
+    reads?: boolean;
+  };
+
+  function internalConfig(config: InternalConfig): InternalConfig {
+    return {
+      ...(config.args !== undefined ? { args: config.args } : {}),
+      ...(config.select !== undefined ? { select: config.select } : {}),
+      ...(config.concurrency !== undefined ? { concurrency: config.concurrency } : {}),
+    };
+  }
+
+  function selectionSchemaFor(name: string): RootSelectionCodec {
+    const cached = caches.selection.get(name);
+    if (cached) return cached;
+    if (!Object.hasOwn(ops, name)) {
+      throw new Error(`Unknown operation: ${name}`);
+    }
+    const op = ops[name]!;
+    const schema = rootToSelectionSchema(registry, op.type.ast);
+    caches.selection.set(name, schema);
+    return schema;
+  }
+
+  function decodeFor(config: DispatchRequest, expectedKind?: "operation" | "subscription") {
+    return decodeBoundary(config, ops, selectionSchemaFor, expectedKind);
+  }
+
+  function executeBoundary(decoded: BoundaryDecoded, options?: DispatchOptions) {
+    const config = internalConfig({
+      args: decoded.args,
+      ...(decoded.select !== undefined ? { select: decoded.select } : {}),
+      ...(options?.concurrency !== undefined ? { concurrency: options.concurrency } : {}),
+    });
+
+    if (options?.reads === true) {
+      // Suspend for a fresh collector per execution of the returned Effect.
+      return Effect.suspend(() => {
+        const reads = makeReadSetCollector();
+        const walked = toStream(decoded.op, config, reads);
+        return Effect.flatMap(Stream.runHead(walked), (option) => {
+          if (option._tag === "None") {
+            return Effect.die(new DomainInvariantError("Operation resolver produced empty stream"));
+          }
+          return Effect.succeed({ result: option.value, reads: reads.entries } as unknown);
+        });
+      });
+    }
+
+    const walked = toStream(decoded.op, config);
+    return Effect.flatMap(Stream.runHead(walked), (option) => {
+      if (option._tag === "None") {
+        return Effect.die(new DomainInvariantError("Operation resolver produced empty stream"));
+      }
+      return Effect.succeed(option.value as unknown);
+    });
+  }
+
+  function streamBoundary(decoded: BoundaryDecoded, concurrency?: number | "unbounded") {
+    return toStream(
+      decoded.op,
+      internalConfig({
+        args: decoded.args,
+        ...(decoded.select !== undefined ? { select: decoded.select } : {}),
+        ...(concurrency !== undefined ? { concurrency } : {}),
+      }),
+    ) as Stream.Stream<unknown, unknown, unknown>;
+  }
+
+  // Unknown names and empty single-value streams are graph invariant
+  // violations: the typed API makes them unrepresentable, so reaching one at
+  // runtime means a bypassed type check or a buggy resolver. Both die.
+  function executeOperation(name: string, config: InternalConfig) {
+    if (!Object.hasOwn(ops, name)) {
+      return Effect.die(new DomainInvariantError(`Unknown operation: ${name}`));
+    }
+    const op = ops[name]!;
+
+    if (config.reads === true) {
+      // Suspend so each execution gets a fresh collector — the returned
+      // Effect may be run more than once.
+      return applyLayers(
+        Effect.suspend(() => {
+          const reads = makeReadSetCollector();
+          const walked = toStream(op, config, reads);
+          return Effect.flatMap(Stream.runHead(walked), (option) => {
+            if (option._tag === "None") {
+              return Effect.die(
+                new DomainInvariantError("Operation resolver produced empty stream"),
+              );
+            }
+            return Effect.succeed({ result: option.value, reads: reads.entries });
+          });
+        }),
+      );
+    }
+
+    const walked = toStream(op, config);
+    const result = Effect.flatMap(Stream.runHead(walked), (option) => {
+      if (option._tag === "None") {
+        return Effect.die(new DomainInvariantError("Operation resolver produced empty stream"));
+      }
+      return Effect.succeed(option.value);
+    });
+    return applyLayers(result);
+  }
+
+  function subscribeOperation(name: string, config: InternalConfig) {
+    if (!Object.hasOwn(ops, name)) {
+      return Stream.fromEffect(Effect.die(new DomainInvariantError(`Unknown operation: ${name}`)));
+    }
+    const op = ops[name]!;
+    return applyLayersStream(toStream(op, config));
+  }
+
+  function operationNames(streamed: boolean): ReadonlyArray<string> {
+    return Object.entries(ops)
+      .filter(([, op]) => op._stream === streamed)
+      .map(([name]) => name);
+  }
+
+  return domainFacade<Ops, Provided, ProvidedE, ProvidedR>({
+    operations: ops,
+    operationNames() {
+      return operationNames(false);
+    },
+    subscriptionNames() {
+      return operationNames(true);
+    },
+    analyzeSelection(selection: Selection | undefined) {
+      return analyzeSelection(selection);
+    },
+    execute(name: string, config: InternalConfig) {
+      return executeOperation(name, config);
+    },
+    subscribe(name: string, config: InternalConfig) {
+      return subscribeOperation(name, config);
+    },
+    inspect() {
+      return inspectOperations(registry);
+    },
+    topology() {
+      caches.topology.value ??= buildTopology(registry);
+      return caches.topology.value;
+    },
+    argsSchema(name: string) {
+      const cached = caches.args.get(name);
+      if (cached) return cached;
+      if (!Object.hasOwn(ops, name)) {
+        throw new Error(`Unknown operation: ${name}`);
+      }
+      const op = ops[name]!;
+      const schema = argsSchemaFor(op);
+      caches.args.set(name, schema);
+      return schema;
+    },
+    selectionSchema(name: string) {
+      return publicSchemaCodec(selectionSchemaFor(name));
+    },
+    responseSchema(name: string, selection: Selection | undefined) {
+      if (!Object.hasOwn(ops, name)) {
+        throw new Error(`Unknown operation: ${name}`);
+      }
+      const op = ops[name]!;
+      return publicSchemaCodec(rootToResponseSchema(registry, op.type.ast, selection));
+    },
+    dispatchResultSchema(
+      name: string,
+      selection: Selection | undefined,
+      operationErrorSchema: Schema.Top,
+    ) {
+      if (!Object.hasOwn(ops, name)) {
+        throw new Error(`Unknown operation: ${name}`);
+      }
+      const op = ops[name]!;
+      if (op._stream) {
+        throw new Error(`dispatchResultSchema: expected operation, got subscription: ${name}`);
+      }
+      const success = rootToResponseSchema(registry, op.type.ast, selection);
+      const failure = Schema.Union([GatewayError, OperationError.schema(operationErrorSchema)]);
+      return ResultCodec(success, failure);
+    },
+    bind(config: RuntimeBindConfig) {
+      const service: Record<string, (args?: unknown) => Effect.Effect<unknown, unknown, unknown>> =
+        {};
+
+      for (const methodName of Object.keys(config)) {
+        const operation = bindingConfig(methodName, config);
+        service[methodName] = (args?: unknown) =>
+          executeOperation(
+            operation.name,
+            internalConfig({
+              ...(args !== undefined ? { args } : {}),
+              ...(operation.select !== undefined ? { select: operation.select } : {}),
+            }),
+          );
+      }
+
+      return service;
+    },
+    bindSubscriptions(config: RuntimeBindConfig) {
+      const service: Record<string, (args?: unknown) => Stream.Stream<unknown, unknown, unknown>> =
+        {};
+
+      for (const methodName of Object.keys(config)) {
+        const operation = bindingConfig(methodName, config);
+        service[methodName] = (args?: unknown) =>
+          subscribeOperation(
+            operation.name,
+            internalConfig({
+              ...(args !== undefined ? { args } : {}),
+              ...(operation.select !== undefined ? { select: operation.select } : {}),
+            }),
+          );
+      }
+
+      return service;
+    },
+    dispatch(config: DispatchRequest, options?: DispatchOptions) {
+      return applyLayers(
+        liftBoundaryToResult(
+          (decoded) => executeBoundary(decoded, options),
+          decodeFor(config, "operation"),
+          config.name,
+        ),
+      );
+    },
+    prepareDispatch(config: DispatchRequest, keyOptions?: InvocationKeyOptions) {
+      return Effect.map(decodeFor(config, "operation"), (decoded) => ({
+        name: config.name,
+        args: decoded.args,
+        ...(decoded.select !== undefined ? { select: decoded.select } : {}),
+        invocationKey: invocationKey(
+          {
+            name: config.name,
+            args: decoded.args,
+            ...(decoded.select !== undefined ? { select: decoded.select } : {}),
+          },
+          keyOptions,
+        ),
+        analysis: analyzeSelection(decoded.select),
+        execute: (options?: DispatchOptions) =>
+          applyLayers(
+            liftBoundaryToResult(
+              (prepared) => executeBoundary(prepared, options),
+              Effect.succeed(decoded),
+              config.name,
+            ),
+          ),
+      }));
+    },
+    dispatchSubscription(config: DispatchRequest, options?: DispatchOptions) {
+      return applyLayersStream(
+        liftBoundaryStreamToResult(
+          (decoded) => streamBoundary(decoded, options?.concurrency),
+          decodeFor(config, "subscription"),
+          config.name,
+        ),
+      );
+    },
+    invocationKey(invocation: Invocation, options?: InvocationKeyOptions) {
+      return invocationKey(invocation, options);
+    },
+    selectionsEqual(a: unknown, b: unknown) {
+      return selectionsEqual(a, b);
+    },
+    provide<AL, EL = never, RL = never>(layer: Layer.Layer<AL, EL, RL>) {
+      // The registry (and warm caches) ride along: it is built once per
+      // Domain.make regardless of how many provide() derivatives exist.
+      return makeDomainWithLayers<Ops, Provided | AL, ProvidedE | EL, Exclude<ProvidedR, AL> | RL>(
+        ops,
+        [...layers, layer as Layer.Layer<unknown, unknown, unknown>],
+        caches,
+        registry,
+      );
+    },
+  });
+}

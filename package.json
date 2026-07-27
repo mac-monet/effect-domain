@@ -1,0 +1,44 @@
+{
+  "name": "effect-domain",
+  "version": "0.0.0",
+  "description": "A computation graph library for Effect schemas.",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check",
+    "prepublishOnly": "vp pack",
+    "prepare": "vp config"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@typescript/native-preview": "7.0.0-dev.20260328.1",
+    "bumpp": "^11.0.1",
+    "effect": "^4.0.0-beta.101",
+    "fast-check": "^4.7.0",
+    "typescript": "^6.0.2",
+    "vite-plus": "0.1.19"
+  },
+  "peerDependencies": {
+    "effect": "^4.0.0-beta.101"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.1.19",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@0.1.19"
+  },
+  "packageManager": "bun@1.3.13"
+}
