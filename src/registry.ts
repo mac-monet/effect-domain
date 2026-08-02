@@ -63,7 +63,7 @@ export interface RegisteredOperation {
   readonly def: AnyOperationDef;
   readonly argsAst: SchemaAST.AST | null;
   readonly returnAst: SchemaAST.AST;
-  /** Declared error schema AST — adapter metadata, never walked. */
+  /** Declared error schema AST — adapter metadata, discovered but never walked. */
   readonly errorAst: SchemaAST.AST | null;
   readonly stream: boolean;
 }
@@ -178,11 +178,14 @@ export function buildRegistry(ops: Record<string, AnyOperationDef>): NodeRegistr
     }
   }
 
-  // Only operation return types seed discovery: `inspect().nodes` and the
-  // topology describe the output model. Field-level computed args are walked
-  // (parity with the pre-registry inspect), operation args are not.
+  // Operation return types and declared error schemas seed discovery:
+  // `inspect().nodes` and the topology describe the output model, and error
+  // variants can nest registered nodes that appear nowhere else. Field-level
+  // computed args are walked (parity with the pre-registry inspect),
+  // operation args are not.
   for (const op of Object.values(ops)) {
     discover(op.type.ast);
+    if (op.error) discover(op.error.ast);
   }
 
   // Phase 2: resolve reference edges now that all nodes are known (handles

@@ -365,8 +365,13 @@ export interface AnyOperationDef {
    * Decoder, preserving `RD = never` at the gateway.
    */
   readonly args?: Schema.Decoder<unknown> | undefined;
-  /** Erased declared error schema — only its AST is read. */
-  readonly error?: { readonly ast: SchemaAST.AST } | undefined;
+  /**
+   * Erased declared error schema. Narrowed to `Schema.Top` (not just
+   * `{ ast }`) so `errorSchema` / `dispatchResultSchema` can hand the live
+   * schema to adapters without a boundary cast — any future op constructor
+   * that lands a value in `error` must land a real Schema.
+   */
+  readonly error: Schema.Top | undefined;
   readonly resolve: (ctx: {
     readonly args: never;
     readonly selections: ReadonlySet<string>;
@@ -379,12 +384,20 @@ export interface OperationDefinition<
   E = never,
   R = never,
   Streamed extends boolean = boolean,
+  ErrS extends Schema.Top = Schema.Top,
 > {
   readonly _stream: Streamed;
   readonly type: Schema.Schema<Type>;
   readonly args?: Schema.Decoder<Args>;
-  /** Declared error schema — adapter metadata, never used by the walker. */
-  readonly error?: Schema.Top;
+  /**
+   * Declared error schema — adapter metadata, never used by the walker.
+   * `ErrS` carries the declared schema's exact type so adapters recover
+   * precise wire typing; it is `never` when no schema was declared, which
+   * `Domain.MissingErrorSchemas` uses for compile-time enforcement. The slot
+   * is required (`| undefined`, not optional) so type-level extraction never
+   * has to reason about property absence.
+   */
+  readonly error: ErrS | undefined;
   readonly resolve: (ctx: {
     readonly args: Args;
     readonly selections: ReadonlySet<string>;
@@ -449,10 +462,10 @@ export function operation<
   R = never,
 >(
   config: OperationDef<Type, Args, E, R> & { readonly error: ErrS },
-): OperationDefinition<Type, Args, E, R, false>;
+): OperationDefinition<Type, Args, E, R, false, ErrS>;
 export function operation<Type, Args = undefined, E = never, R = never>(
   config: OperationDef<Type, Args, E, R> & { readonly error?: never },
-): OperationDefinition<Type, Args, E, R, false>;
+): OperationDefinition<Type, Args, E, R, false, never>;
 export function operation<Type, Args = undefined, E = never, R = never>(
   config: OperationDef<Type, Args, E, R>,
 ): OperationDefinition<Type, Args, E, R, false> {
@@ -460,7 +473,7 @@ export function operation<Type, Args = undefined, E = never, R = never>(
     _stream: false,
     type: config.type,
     ...(config.args !== undefined ? { args: config.args } : {}),
-    ...(config.error !== undefined ? { error: config.error } : {}),
+    error: config.error,
     resolve: (ctx) => Stream.fromEffect(config.resolve(ctx)),
   };
 }
@@ -513,10 +526,10 @@ export function subscription<
   R = never,
 >(
   config: SubscriptionDef<Type, Args, E, R> & { readonly error: ErrS },
-): OperationDefinition<Type, Args, E, R, true>;
+): OperationDefinition<Type, Args, E, R, true, ErrS>;
 export function subscription<Type, Args = undefined, E = never, R = never>(
   config: SubscriptionDef<Type, Args, E, R> & { readonly error?: never },
-): OperationDefinition<Type, Args, E, R, true>;
+): OperationDefinition<Type, Args, E, R, true, never>;
 export function subscription<Type, Args = undefined, E = never, R = never>(
   config: SubscriptionDef<Type, Args, E, R>,
 ): OperationDefinition<Type, Args, E, R, true> {
@@ -524,7 +537,7 @@ export function subscription<Type, Args = undefined, E = never, R = never>(
     _stream: true,
     type: config.type,
     ...(config.args !== undefined ? { args: config.args } : {}),
-    ...(config.error !== undefined ? { error: config.error } : {}),
+    error: config.error,
     resolve: config.resolve,
   };
 }

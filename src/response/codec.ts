@@ -128,36 +128,43 @@ function nodeToResponseSchema(
   });
   setCached(nodeResponseCache, ast, selectionKey, placeholder);
 
-  const fields: Record<string, DynamicCodec> = Object.create(null);
-  let plan: SelectedNodePlan;
+  // The placeholder is cached before the build so recursive references
+  // resolve; if the build throws (unknown field, duplicate output key), the
+  // never-realized placeholder must not survive as a poisoned cache entry.
   try {
-    plan = planSelectedNode(registry, ast, selection);
-  } catch (error) {
-    if (error instanceof DuplicateOutputKey) {
-      throw new Error(
-        `responseSchema: duplicate output key "${error.outputKey}" in selection (use aliases to disambiguate)`,
+    const fields: Record<string, DynamicCodec> = Object.create(null);
+    let plan: SelectedNodePlan;
+    try {
+      plan = planSelectedNode(registry, ast, selection);
+    } catch (error) {
+      if (error instanceof DuplicateOutputKey) {
+        throw new Error(
+          `responseSchema: duplicate output key "${error.outputKey}" in selection (use aliases to disambiguate)`,
+        );
+      }
+      if (error instanceof UndefinedSelectionEntry) {
+        throw new Error(`responseSchema: undefined selection entry "${error.fieldName}"`);
+      }
+      throw error;
+    }
+
+    for (const field of plan.fields) {
+      if (field.fieldAsts.length === 0) {
+        throw new Error(`responseSchema: unknown selection field "${field.entry.fieldName}"`);
+      }
+      const successSchema = unionCodec(
+        field.fieldAsts.map((fieldAst) => fieldSuccessSchema(registry, fieldAst, field)),
       );
+      fields[field.entry.outputKey] = unsafeCoerceCodec(ResultCodec(successSchema, unknownCodec));
     }
-    if (error instanceof UndefinedSelectionEntry) {
-      throw new Error(`responseSchema: undefined selection entry "${error.fieldName}"`);
-    }
+    const built = structCodec(fields);
+    realized.value = built;
+    setCached(nodeResponseCache, ast, selectionKey, built);
+    return built;
+  } catch (error) {
+    nodeResponseCache.get(ast)?.delete(selectionKey);
     throw error;
   }
-
-  for (const field of plan.fields) {
-    if (field.fieldAsts.length === 0) {
-      throw new Error(`responseSchema: unknown selection field "${field.entry.fieldName}"`);
-    }
-    const successSchema = unionCodec(
-      field.fieldAsts.map((fieldAst) => fieldSuccessSchema(registry, fieldAst, field)),
-    );
-    fields[field.entry.outputKey] = unsafeCoerceCodec(ResultCodec(successSchema, unknownCodec));
-  }
-
-  const built = structCodec(fields);
-  realized.value = built;
-  setCached(nodeResponseCache, ast, selectionKey, built);
-  return built;
 }
 
 function fieldSuccessSchema(

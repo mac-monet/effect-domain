@@ -68,6 +68,7 @@ export const domain = Domain.make({
   getUser: operation({
     type: User,
     args: Schema.Struct({ id: Schema.String }),
+    error: UserNotFound,
     resolve: ({ args }) =>
       Effect.gen(function* () {
         const repo = yield* UserRepo;

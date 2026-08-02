@@ -33,6 +33,26 @@ export namespace Domain {
    */
   export type ExecuteConfig<T, Args, S> = DomainTypes.DomainExecuteConfig<T, Args, S>;
   /**
+   * The operation names whose resolvers can fail (`E` is not `never`) but
+   * that declared no `error` schema. Adapters that serialize failures
+   * constrain on `[MissingErrorSchemas<Ops>] extends [never]` so a missing
+   * declaration becomes a compile error at the adapter boundary — domains
+   * used purely via `execute()` never pay for schemas they don't need.
+   *
+   * @since 0.3.0
+   * @category models
+   */
+  export type MissingErrorSchemas<Ops extends Record<string, AnyOperationDef>> =
+    DomainTypes.MissingErrorSchemas<Ops>;
+  /**
+   * The wire-level error type for an operation: the declared error schema's
+   * `Type` when one exists, else the resolver's inferred failure type.
+   *
+   * @since 0.3.0
+   * @category models
+   */
+  export type DeclaredErrorType<Op extends AnyOperationDef> = DomainTypes.DeclaredErrorType<Op>;
+  /**
    * Envelope returned by `execute(name, { ..., reads: true })`: the
    * operation result plus per-execution artifacts (currently the walk's
    * read set).

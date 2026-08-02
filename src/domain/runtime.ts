@@ -70,6 +70,14 @@ function publicSchemaCodec(codec: DynamicCodec): PublicSchemaCodec {
   return codec;
 }
 
+// Fallback for dispatchResultSchemaDynamic: decodes any boundary failure.
+// Built lazily once — most graphs never take the fallback path.
+let gatewayResultCodecMemo: DynamicCodec | undefined;
+function gatewayResultCodec(): DynamicCodec {
+  gatewayResultCodecMemo ??= ResultCodec(Schema.Unknown, GatewayError) as DynamicCodec;
+  return gatewayResultCodecMemo;
+}
+
 // AnyOperationDef keeps args contravariant as `never` so concrete operation
 // resolvers remain assignable after erasure. Typed execute/bind calls pass the
 // statically-checked args slot; dispatch calls pass the boundary-decoded args.
@@ -297,10 +305,18 @@ function makeDomainWithLayers<
       const op = ops[name]!;
       return publicSchemaCodec(rootToResponseSchema(registry, op.type.ast, selection));
     },
+    errorSchema(name: string) {
+      if (!Object.hasOwn(ops, name)) {
+        throw new Error(`Unknown operation: ${name}`);
+      }
+      return ops[name]!.error ?? Schema.Never;
+    },
+    // The trailing optional below is the TS overload-implementation signature
+    // absorbing both public arities — both public overloads are optional-free.
     dispatchResultSchema(
       name: string,
       selection: Selection | undefined,
-      operationErrorSchema: Schema.Top,
+      operationErrorSchema?: Schema.Top,
     ) {
       if (!Object.hasOwn(ops, name)) {
         throw new Error(`Unknown operation: ${name}`);
@@ -310,7 +326,24 @@ function makeDomainWithLayers<
         throw new Error(`dispatchResultSchema: expected operation, got subscription: ${name}`);
       }
       const success = rootToResponseSchema(registry, op.type.ast, selection);
-      const failure = Schema.Union([GatewayError, OperationError.schema(operationErrorSchema)]);
+      const failure = Schema.Union([
+        GatewayError,
+        OperationError.schema(operationErrorSchema ?? op.error ?? Schema.Never),
+      ]);
+      return ResultCodec(success, failure);
+    },
+    dispatchResultSchemaDynamic(name: string, selection: Selection | undefined) {
+      const op = Object.hasOwn(ops, name) ? ops[name]! : undefined;
+      if (op === undefined || op._stream) return gatewayResultCodec();
+      let success: DynamicCodec;
+      try {
+        success = rootToResponseSchema(registry, op.type.ast, selection);
+      } catch {
+        // Invalid selection: dispatch fails at the boundary, so the gateway
+        // fallback decodes everything the server can produce for it.
+        return gatewayResultCodec();
+      }
+      const failure = Schema.Union([GatewayError, OperationError.schema(op.error ?? Schema.Never)]);
       return ResultCodec(success, failure);
     },
     bind(config: RuntimeBindConfig) {

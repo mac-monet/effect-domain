@@ -1,7 +1,48 @@
-import type { Effect, Option, Result, Stream } from "effect";
+import type { Effect, Option, Result, Schema, Stream } from "effect";
 import type { AnyOperationDef, OperationDefinition } from "../define.ts";
 import type { HasArrayMember, RootSelectionFor, UnionKeys } from "../selection/syntax.ts";
 import type { ReadSet } from "../walk.ts";
+
+/**
+ * The exact declared error schema type of an operation (`operation({ error })`),
+ * or `never` when none was declared.
+ */
+export type ExtractErrorSchema<Op> = Op extends { readonly error: infer ErrS }
+  ? ErrS extends Schema.Top
+    ? ErrS
+    : never
+  : never;
+
+/**
+ * The wire-level error type for an operation: the declared error schema's
+ * `Type` when one exists, else `never` — matching the runtime, which builds
+ * undeclared error codecs from `Schema.Never`. An op that can fail but
+ * declares no schema therefore types (and is) unable to round-trip its
+ * failures; `MissingErrorSchemas` is the enforcement point for that.
+ */
+export type DeclaredErrorType<Op> = [ExtractErrorSchema<Op>] extends [never]
+  ? never
+  : ExtractErrorSchema<Op> extends { readonly Type: infer ErrT }
+    ? ErrT
+    : never;
+
+/**
+ * The operation names whose resolvers can fail (`E` is not `never`) but that
+ * declared no `error` schema — the ops whose failures cannot round-trip a
+ * wire. Adapters constrain on `[MissingErrorSchemas<Ops>] extends [never]`
+ * to turn a missing declaration into a compile error at the adapter boundary.
+ *
+ * Only meaningful for concrete op records: erased `AnyOperationDef` records
+ * (e.g. after `Domain.erase`) infer `E = never`, so the constraint is
+ * vacuously satisfied — enforce before erasing.
+ */
+export type MissingErrorSchemas<Ops> = {
+  [K in keyof Ops]: [ExtractE<Ops[K]>] extends [never]
+    ? never
+    : [ExtractErrorSchema<Ops[K]>] extends [never]
+      ? K
+      : never;
+}[keyof Ops];
 
 export type ExtractE<Op> =
   Op extends OperationDefinition<infer _T, infer _A, infer E, infer _R> ? E : never;

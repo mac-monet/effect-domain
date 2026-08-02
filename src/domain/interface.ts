@@ -124,6 +124,26 @@ export interface DomainInstance<
     name: K,
   ): Schema.Decoder<DomainTypes.ExtractArgs<Ops[K]>>;
   /**
+   * Returns the operation's declared error schema (`operation({ error })`),
+   * or `Schema.Never` when none was declared.
+   *
+   * The returned codec is typed against the resolver's failure type `E`
+   * directly: `operation()` guarantees at definition time that a declared
+   * schema's `Type` covers `E`. Services are asserted `never`, matching the
+   * boundary convention of `responseSchema` — declared error schemas are
+   * plain data schemas.
+   * Operations that fail (`E` not `never`) without a declared schema fall
+   * back to `Schema.Never` — typed as `Codec<never>`, honestly: such a codec
+   * cannot encode their failures. Declare an `error` schema on any operation
+   * whose errors must cross a wire; `Domain.MissingErrorSchemas` turns the
+   * omission into a compile error at adapter boundaries.
+   *
+   * Throws synchronously if `name` is not an operation on this graph.
+   */
+  errorSchema<K extends string & keyof Ops>(
+    name: K,
+  ): Schema.Codec<DomainTypes.DeclaredErrorType<Ops[K]>, unknown, never, never>;
+  /**
    * Returns the runtime selection Schema mirroring
    * `RootSelectionFor<Op["type"]>` for an operation. Built lazily on first
    * call, memoized per operation.
@@ -168,9 +188,10 @@ export interface DomainInstance<
    * Returns a runtime Schema for the full `dispatch` result wire shape:
    * `Result<responseSchema(name, selection), GatewayError | OperationError<E>>`.
    *
-   * The graph derives the success schema from the operation and selection. The
-   * app supplies the operation error cause schema because `E` is only a
-   * TypeScript type at runtime.
+   * The graph derives the success schema from the operation and selection,
+   * and — when `operationErrorSchema` is omitted — the error cause schema
+   * from the operation's declared `error` (see {@link errorSchema}). Pass
+   * `operationErrorSchema` explicitly only to override the declared schema.
    */
   dispatchResultSchema<
     K extends DomainTypes.OperationNamesByStream<Ops, false>,
@@ -188,6 +209,48 @@ export interface DomainInstance<
     unknown,
     F["DecodingServices"],
     F["EncodingServices"]
+  >;
+  dispatchResultSchema<
+    K extends DomainTypes.OperationNamesByStream<Ops, false>,
+    const S extends RootSelectionFor<DomainTypes.ExtractType<Ops[K]>> | undefined,
+  >(
+    name: K,
+    selection: S,
+  ): Schema.Codec<
+    Result.Result<
+      DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>,
+      GatewayError | OperationError<DomainTypes.DeclaredErrorType<Ops[K]>>
+    >,
+    unknown,
+    never,
+    never
+  >;
+  /**
+   * Total, string-accepting sibling of {@link dispatchResultSchema} for
+   * dynamic adapters that hold a runtime operation name rather than a typed
+   * key (generic RPC/HTTP gateways, codegen).
+   *
+   * Never throws: when the name is unknown, names a subscription, or the
+   * selection cannot produce a response codec, it returns a fallback codec
+   * whose failure branch decodes the {@link GatewayError} union. That is
+   * always sufficient, because any dispatch that would hit those cases fails
+   * at the boundary with a GatewayError — the fallback decodes exactly what
+   * the server can produce. Success and error causes are wire-erased to
+   * `unknown`; use the typed overloads when the operation name is static.
+   *
+   * The error cause schema is always the operation's declared `error`
+   * (see {@link errorSchema}); a dynamic adapter holding only a runtime name
+   * has no per-operation override to offer. Use the typed
+   * `dispatchResultSchema` to override explicitly.
+   */
+  dispatchResultSchemaDynamic(
+    name: string,
+    selection: Selection | undefined,
+  ): Schema.Codec<
+    Result.Result<unknown, GatewayError | OperationError<unknown>>,
+    unknown,
+    never,
+    never
   >;
   /**
    * Freezes operation names and selections into ordinary typed service

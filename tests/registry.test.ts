@@ -234,3 +234,30 @@ describe("buildRegistry", () => {
     expect(registry.lookup(op.returnAst)?.identifier).toBe("Feed");
   });
 });
+
+describe("error schema discovery", () => {
+  it("registers nodes reachable only through a declared error schema", () => {
+    const Culprit = node(
+      "Culprit",
+      Schema.Struct({ id: Schema.String, name: Schema.String }),
+      (f) => ({
+        shout: f.field({
+          type: Schema.String,
+          resolve: ({ parent }) => Effect.succeed(parent.name.toUpperCase()),
+        }),
+      }),
+      { identity: "id" },
+    );
+    const Denied = Schema.Struct({
+      _tag: Schema.Literal("Denied"),
+      culprit: Culprit,
+    });
+    const Ok = node("ErrOnlyOk", Schema.Struct({ v: Schema.String }), {});
+    const registry = buildRegistry({
+      go: operation({ type: Ok, error: Denied, resolve: () => Effect.succeed({ v: "x" }) }),
+    });
+    const ids = Array.from(registry.nodes.values()).map((n) => n.identifier);
+    expect(ids).toContain("Culprit");
+    expect(ids).toContain("ErrOnlyOk");
+  });
+});
