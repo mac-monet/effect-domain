@@ -230,13 +230,15 @@ export interface DomainInstance<
    * dynamic adapters that hold a runtime operation name rather than a typed
    * key (generic RPC/HTTP gateways, codegen).
    *
-   * Never throws: when the name is unknown, names a subscription, or the
-   * selection cannot produce a response codec, it returns a fallback codec
-   * whose failure branch decodes the {@link GatewayError} union. That is
-   * always sufficient, because any dispatch that would hit those cases fails
-   * at the boundary with a GatewayError — the fallback decodes exactly what
-   * the server can produce. Success and error causes are wire-erased to
-   * `unknown`; use the typed overloads when the operation name is static.
+   * Never throws: when the name is unknown or the selection cannot produce
+   * a response codec, it returns a fallback codec whose failure branch
+   * decodes the {@link GatewayError} union. That is always sufficient,
+   * because any dispatch that would hit those cases fails at the boundary
+   * with a GatewayError — the fallback decodes exactly what the server can
+   * produce. Subscription names build real codecs: each stream item shares
+   * the one-shot dispatch Result wire shape. Success and error causes are
+   * wire-erased to `unknown`; use the typed overloads when the operation
+   * name is static.
    *
    * The error cause schema is always the operation's declared `error`
    * (see {@link errorSchema}); a dynamic adapter holding only a runtime name

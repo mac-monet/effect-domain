@@ -1,83 +1,192 @@
-import { Effect, Layer, Result, Schema } from "effect";
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+// Dynamic typed RPC: the whole domain behind two static procedures
+// (DomainExecute, DomainSubscribe), with a domain-aware client whose
+// operation names, args, selections, and selection-dependent result types
+// match `domain.execute` / `domain.subscribe` exactly.
+//
+// Fixed, per-operation procedures should prefer `domain.bind(...)` with
+// native RpcGroup declarations (see rpc-fixed.ts / rpc-stream.ts).
+import { Effect, Result, Schema, Stream } from "effect";
+import type { Scope } from "effect";
+import { Rpc, RpcClient, RpcGroup } from "effect/unstable/rpc";
+import type { RpcClientError } from "effect/unstable/rpc";
+import {
+  DispatchRequestSchema,
+  type DispatchRequest,
+  Domain,
+  type DomainInstance,
+  GatewayError,
+  OperationError,
+  type PreparedDispatch,
+  type RootSelectionFor,
+  type Selection,
+} from "../src/index.ts";
+import type * as DomainTypes from "../src/domain/type-level.ts";
+import type { AnyOperationDef } from "../src/define.ts";
 import { domain, UserRepoLive } from "./domain.ts";
-import { GatewayError, Domain, type RootSelectionFor } from "../src/index.ts";
 
-type OperationName = Extract<keyof typeof domain.operations, string>;
-type OperationNamesByStream<Streamed extends boolean> = {
-  [K in OperationName]: (typeof domain.operations)[K]["_stream"] extends Streamed ? K : never;
-}[OperationName];
-type QueryName = OperationNamesByStream<false>;
-type ExtractArgs<Op> = Op extends {
-  readonly args?: infer ArgsSchema;
-}
-  ? ArgsSchema extends Schema.Decoder<infer Args>
-    ? Args
-    : undefined
-  : undefined;
-type ExtractType<Op> = Op extends { readonly type: Schema.Schema<infer Type> } ? Type : never;
-type ArgsPayload<Args> = [Args] extends [undefined]
-  ? { readonly args?: Args }
-  : { readonly args: Args };
-type SelectPayload<Type, Select> = [RootSelectionFor<Type>] extends [never]
-  ? { readonly select?: undefined }
-  : { readonly select: Select & RootSelectionFor<Type> };
+// ---------------------------------------------------------------------------
+// Wire: one execute procedure, one subscribe procedure, both static. The
+// payload is the untyped DispatchRequest envelope; typing is recovered on the
+// client from the domain itself.
+// ---------------------------------------------------------------------------
 
-export type DomainRpcClient = {
-  readonly [Name in QueryName]: <
-    const Select extends RootSelectionFor<ExtractType<(typeof domain.operations)[Name]>>,
+export const DomainRpcs = RpcGroup.make(
+  Rpc.make("DomainExecute", {
+    payload: DispatchRequestSchema,
+    success: Schema.Unknown,
+  }),
+  Rpc.make("DomainSubscribe", {
+    payload: DispatchRequestSchema,
+    success: Schema.Unknown,
+    stream: true,
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Enforcement: constructing the adapter for a domain where some fallible
+// operation declared no `error` schema is a compile error naming the ops.
+// ---------------------------------------------------------------------------
+
+type RequireErrorSchemas<Ops extends Record<string, AnyOperationDef>> = [
+  Domain.MissingErrorSchemas<Ops>,
+] extends [never]
+  ? unknown
+  : {
+      readonly "operations missing a declared error schema": Domain.MissingErrorSchemas<Ops>;
+    };
+
+type QueryName<Ops extends Record<string, AnyOperationDef>> = DomainTypes.OperationNamesByStream<
+  Ops,
+  false
+>;
+type SubscriptionName<Ops extends Record<string, AnyOperationDef>> =
+  DomainTypes.OperationNamesByStream<Ops, true>;
+
+type ClientErrors<Op> =
+  | DomainTypes.DeclaredErrorType<Op>
+  | GatewayError
+  | RpcClientError.RpcClientError
+  | Schema.SchemaError;
+
+type InvokeConfig<Op, S> = Omit<
+  DomainTypes.DomainExecuteConfig<DomainTypes.ExtractType<Op>, DomainTypes.ExtractArgs<Op>, S>,
+  "reads" | "concurrency"
+>;
+
+export interface DomainRpcClient<Ops extends Record<string, AnyOperationDef>> {
+  execute<
+    K extends QueryName<Ops>,
+    const S extends RootSelectionFor<DomainTypes.ExtractType<Ops[K]>>,
   >(
-    payload: ArgsPayload<ExtractArgs<(typeof domain.operations)[Name]>> &
-      SelectPayload<ExtractType<(typeof domain.operations)[Name]>, Select>,
-  ) => Effect.Effect<
-    Domain.RootResultOf<ExtractType<(typeof domain.operations)[Name]>, Select>,
-    GatewayError
+    name: K,
+    config: InvokeConfig<Ops[K], S>,
+  ): Effect.Effect<
+    DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>,
+    ClientErrors<Ops[K]>
   >;
+  subscribe<
+    K extends SubscriptionName<Ops>,
+    const S extends RootSelectionFor<DomainTypes.ExtractType<Ops[K]>>,
+  >(
+    name: K,
+    config: InvokeConfig<Ops[K], S>,
+  ): Stream.Stream<
+    DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>,
+    ClientErrors<Ops[K]>
+  >;
+}
+
+// ---------------------------------------------------------------------------
+// Adapter
+// ---------------------------------------------------------------------------
+
+export const makeDomainRpc = <Ops extends Record<string, AnyOperationDef>, Provided, PE, PR>(
+  dom: DomainInstance<Ops, Provided, PE, PR> & RequireErrorSchemas<Ops>,
+) => {
+  const codecFor = (name: string, select: Selection | undefined) =>
+    dom.dispatchResultSchemaDynamic(name, select);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Provided sits in an Exclude<>; only `any` unifies every provided domain.
+  const serverLayer = (liveDomain: DomainInstance<Ops, any, never, never>) => {
+    // A fully provided domain's prepared dispatch needs no services; the
+    // generic Provided/AllR machinery can't reduce that, so pin it here.
+    const prepare = (config: DispatchRequest) =>
+      liveDomain.prepareDispatch(config) as Effect.Effect<
+        PreparedDispatch<never, unknown>,
+        GatewayError
+      >;
+    const encodeWith = (request: DispatchRequest, select: Selection | undefined) =>
+      Schema.encodeEffect(codecFor(request.name, select));
+    return DomainRpcs.toLayer({
+      DomainExecute: (request: DispatchRequest) =>
+        prepare(request).pipe(
+          Effect.matchEffect({
+            onFailure: (gatewayError) => encodeWith(request, undefined)(Result.fail(gatewayError)),
+            onSuccess: (prepared) =>
+              prepared.execute().pipe(Effect.flatMap(encodeWith(request, prepared.select))),
+          }),
+          Effect.orDie,
+        ),
+      DomainSubscribe: (request: DispatchRequest) =>
+        liveDomain
+          .dispatchSubscription(request)
+          .pipe(
+            Stream.mapEffect((item) =>
+              encodeWith(
+                request,
+                request.select as Selection | undefined,
+              )(item as Result.Result<unknown, GatewayError | OperationError<unknown>>).pipe(
+                Effect.orDie,
+              ),
+            ),
+          ),
+    });
+  };
+
+  const unwrap = <A>(result: Result.Result<A, GatewayError | OperationError<unknown>>) =>
+    Result.isFailure(result)
+      ? Effect.fail(
+          result.failure instanceof OperationError ? result.failure.cause : result.failure,
+        )
+      : Effect.succeed(result.success);
+
+  // Structural raw-client type: works for RpcClient.make and RpcTest.makeClient.
+  const clientFrom = (client: {
+    DomainExecute: (payload: DispatchRequest) => Effect.Effect<unknown, unknown>;
+    DomainSubscribe: (payload: DispatchRequest) => Stream.Stream<unknown, unknown>;
+  }) => {
+    const decode = (name: string, select: unknown) =>
+      Schema.decodeUnknownEffect(codecFor(name, select as Selection | undefined));
+    return {
+      execute: (name: string, config: { args?: unknown; select?: unknown }) =>
+        client
+          .DomainExecute({ name, args: config.args, select: config.select })
+          .pipe(Effect.flatMap(decode(name, config.select)), Effect.flatMap(unwrap)),
+      subscribe: (name: string, config: { args?: unknown; select?: unknown }) =>
+        client
+          .DomainSubscribe({ name, args: config.args, select: config.select })
+          .pipe(
+            Stream.mapEffect((item) =>
+              decode(name, config.select)(item).pipe(Effect.flatMap(unwrap)),
+            ),
+          ),
+      // The generic surface above is untyped by construction (runtime name
+      // strings); the interface restores exact `domain.execute` typing.
+    } as unknown as DomainRpcClient<Ops>;
+  };
+
+  const makeClient: Effect.Effect<
+    DomainRpcClient<Ops>,
+    never,
+    RpcClient.Protocol | Scope.Scope
+  > = Effect.map(RpcClient.make(DomainRpcs), clientFrom);
+
+  return { group: DomainRpcs, serverLayer, clientFrom, makeClient };
 };
 
-const operationNames = domain.operationNames() as ReadonlyArray<QueryName>;
+// ---------------------------------------------------------------------------
+// Wired to the example domain
+// ---------------------------------------------------------------------------
 
-// Dynamic gateway example: each procedure accepts runtime args/select and
-// dispatches through domain.dispatch(...). Fixed RPC procedures should prefer
-// domain.bind(...) with native RpcGroup declarations.
-const RpcPayload = (_name: OperationName) =>
-  Schema.Struct({
-    args: Schema.optional(Schema.Unknown),
-    select: Schema.optional(Schema.Unknown),
-  });
-
-export const Rpcs = RpcGroup.make(
-  ...operationNames.map((name) =>
-    Rpc.make(name, {
-      payload: RpcPayload(name),
-      success: Schema.Unknown,
-      error: GatewayError,
-    }),
-  ),
-);
-type RpcsUnion = typeof Rpcs extends RpcGroup.RpcGroup<infer R> ? R : never;
-
-// Client-side helper for shared-code Effect stacks. The RPC transport remains
-// dynamic, but this wrapper captures the `select` literal at the call site so
-// TypeScript can infer the selected Result tree.
-export function makeDomainRpcClient(client: unknown): DomainRpcClient {
-  return client as unknown as DomainRpcClient;
-}
-
-const handlers = Object.fromEntries(
-  operationNames.map((name) => [
-    name,
-    (payload: { readonly args?: unknown; readonly select?: unknown }) =>
-      Effect.flatMap(
-        domain
-          .dispatch({ name, args: payload.args, select: payload.select })
-          .pipe(Domain.orFail, Effect.orDie),
-        (result) =>
-          Result.isFailure(result) ? Effect.fail(result.failure) : Effect.succeed(result.success),
-      ),
-  ]),
-) as unknown as RpcGroup.HandlersFrom<RpcsUnion>;
-
-const Handlers = Rpcs.toLayer(Effect.succeed(handlers));
-
-export const RpcLive = Layer.provide(Handlers, UserRepoLive);
+export const rpc = makeDomainRpc(domain);
+export const RpcLive = rpc.serverLayer(domain.provide(UserRepoLive));

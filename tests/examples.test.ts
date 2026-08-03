@@ -3,7 +3,7 @@ import { RpcTest } from "effect/unstable/rpc";
 import { describe, expect, it } from "vite-plus/test";
 import { domain } from "../examples/domain.ts";
 import { webHandler } from "../examples/http-dispatch.ts";
-import { makeDomainRpcClient, RpcLive, Rpcs } from "../examples/rpc-dispatch.ts";
+import { rpc, RpcLive } from "../examples/rpc-dispatch.ts";
 
 // Result.Result serializes to { _id: "Result", _tag: "Success" | "Failure", value }.
 // Over the wire we work with that plain shape — Result methods need a live prototype.
@@ -146,8 +146,8 @@ describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
 // serialization, so we keep the prototypes and use Result.getOrThrow directly.
 describe("Examples: RPC dynamic gateway via domain.dispatch", () => {
   const program = Effect.gen(function* () {
-    const client = makeDomainRpcClient(yield* RpcTest.makeClient(Rpcs));
-    const user = yield* client.getUser({
+    const client = rpc.clientFrom(yield* RpcTest.makeClient(rpc.group));
+    const user = yield* client.execute("getUser", {
       args: { id: "1" },
       select: {
         id: true,
@@ -156,10 +156,10 @@ describe("Examples: RPC dynamic gateway via domain.dispatch", () => {
         profile: { select: { location: true } },
       },
     });
-    const list = yield* client.listUsers({
+    const list = yield* client.execute("listUsers", {
       select: { firstName: true },
     });
-    const created = yield* client.createUser({
+    const created = yield* client.execute("createUser", {
       args: { firstName: "Dana", lastName: "Davis" },
       select: { id: true, fullName: true },
     });
@@ -188,7 +188,13 @@ describe("Examples: RPC dynamic gateway via domain.dispatch", () => {
 
     expect(Result.getOrThrow(user.fullName)).toBe("Alice Anderson");
     expect(Result.getOrThrow(user.greeting)).toBe("Dr. Alice Anderson");
-    expect(Result.getOrThrow(Result.getOrThrow(user.profile).location)).toBe("Taipei");
+    // Nested projections are Result-wrapped at runtime; the nested projection
+    // type is looser here (same cast as walker tests).
+    const profile = Result.getOrThrow(user.profile) as unknown as Record<
+      string,
+      Result.Result<unknown, unknown>
+    >;
+    expect(Result.getOrThrow(profile.location)).toBe("Taipei");
 
     expect(list.map((r) => Result.getOrThrow(r.firstName))).toEqual(["Alice", "Bob"]);
 

@@ -113,7 +113,9 @@ describe("dispatchResultSchemaDynamic", () => {
     }
   });
 
-  it("never throws: unknown names and invalid selections fall back to the gateway codec", () => {
+  it("never throws: every codec (fallback or real) decodes gateway failures", () => {
+    // "nope" and the invalid selection take the gateway fallback;
+    // "watchUsers" (a subscription) builds a real per-item codec.
     for (const codec of [
       domain.dispatchResultSchemaDynamic("nope", undefined),
       domain.dispatchResultSchemaDynamic("watchUsers", undefined),

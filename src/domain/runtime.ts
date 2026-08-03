@@ -334,7 +334,7 @@ function makeDomainWithLayers<
     },
     dispatchResultSchemaDynamic(name: string, selection: Selection | undefined) {
       const op = Object.hasOwn(ops, name) ? ops[name]! : undefined;
-      if (op === undefined || op._stream) return gatewayResultCodec();
+      if (op === undefined) return gatewayResultCodec();
       let success: DynamicCodec;
       try {
         success = rootToResponseSchema(registry, op.type.ast, selection);
