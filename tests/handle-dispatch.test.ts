@@ -1,7 +1,7 @@
-import { Effect, Result, Schema, Stream } from "effect";
+import { Effect, Exit, Option, Result, Schema, Stream } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { domain, UserNotFound, UserRepoLive } from "../examples/domain.ts";
-import { OperationError, UnknownOperation } from "../src/index.ts";
+import { Domain, OperationError, UnknownOperation } from "../src/index.ts";
 
 const liveDomain = domain.provide(UserRepoLive);
 
@@ -78,5 +78,40 @@ describe("handleSubscription", () => {
     );
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ _tag: "Failure", failure: { _tag: "WrongOperationKind" } });
+  });
+});
+
+// wireClient glued directly to handleDispatch/handleSubscription: the two
+// ends of the wire with no transport in between. If this round-trips, any
+// transport that faithfully moves the envelope round-trips too.
+describe("wireClient over handleDispatch (in-process wire)", () => {
+  const client = Domain.wireClient(domain, {
+    execute: (request) => liveDomain.handleDispatch(request),
+    subscribe: (request) => liveDomain.handleSubscription(request),
+  });
+
+  it("round-trips a typed success", async () => {
+    const user = await Effect.runPromise(
+      client.execute("getUser", { args: { id: "1" }, select: { id: true, fullName: true } }),
+    );
+    expect(Result.getOrThrow(user.id)).toBe("1");
+    expect(Result.getOrThrow(user.fullName)).toBe("Alice Anderson");
+  });
+
+  it("unwraps a declared error into the typed error channel", async () => {
+    const exit = await Effect.runPromiseExit(
+      client.execute("getUser", { args: { id: "missing" }, select: { id: true } }),
+    );
+    const error = Exit.findErrorOption(exit).pipe(Option.getOrThrow);
+    expect(error).toBeInstanceOf(UserNotFound);
+  });
+
+  it("streams subscription items as decoded results", async () => {
+    const items = await Effect.runPromise(
+      Stream.runCollect(
+        client.subscribe("watchUsers", { args: { start: 5 }, select: { id: true } }),
+      ),
+    );
+    expect(items.map((row) => Result.getOrThrow(row.id))).toEqual(["5", "6"]);
   });
 });

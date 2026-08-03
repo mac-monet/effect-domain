@@ -123,6 +123,50 @@ const program = Effect.gen(function* () {
 If the entire invocation record comes from untrusted data, decode it first with
 `Domain.decodeDispatchRequest(...)` before calling `prepareDispatch`.
 
+## Wire Adapters
+
+For transports that serialize responses, `domain.handleDispatch(...)` is the
+complete server pipeline: validate the envelope, execute, and encode the
+dispatch Result with the domain's own wire codec
+(`dispatchResultSchemaDynamic`). Every expected outcome — gateway errors and
+declared operation errors — travels inside the encoded envelope, so the
+handler's error channel is `never` and any transport can forward it as-is:
+
+```ts
+// HTTP route, RPC handler, worker message — all the same line:
+const encoded = yield * domain.handleDispatch({ name, args, select });
+```
+
+`Domain.wireClient(...)` is the client mirror. Give it the domain and "how to
+send", and it returns a client with full `domain.execute` /
+`domain.subscribe` typing — names, args, selections, selection-dependent
+result types — decoding responses back to live `Result` / error-class
+instances:
+
+```ts
+const client = Domain.wireClient(domain, {
+  execute: (request) => rpcClient.DomainExecute(request),
+  subscribe: (request) => rpcClient.DomainSubscribe(request),
+});
+
+const user =
+  yield *
+  client.execute("getUser", {
+    args: { id: "1" },
+    select: { id: true, fullName: true },
+  }); // fails with UserNotFound | GatewayError | ... — all typed
+```
+
+Serializing failures requires each fallible operation to declare an `error`
+schema (`operation({ error: UserNotFound, ... })`); `wireClient` enforces this
+at compile time, naming any operation that is missing one.
+
+The dispatch ladder, then, is: `handleDispatch` for simple wire transports,
+`prepareDispatch` when policy must run between validation and execution,
+`dispatch` when nothing crosses a wire and live `Result` values are wanted.
+See `examples/rpc-dispatch.ts` and `examples/http-dispatch.ts` for both ends
+of the wire in ~50 lines each.
+
 `domain.responseSchema(...)` is intended for fixed or already-validated
 selections, such as RPC route declarations and typed clients. Dynamic gateways
 should avoid synthesizing response schemas for arbitrary user-controlled

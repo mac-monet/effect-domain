@@ -28,9 +28,11 @@ The other files expose or consume that graph without redefining the domain model
   graph concurrency, timeout, and redacted errors.
 - `rpc-fixed.ts` — fixed Effect RPC procedures with stable request and response
   schemas.
-- `rpc-dispatch.ts` — dynamic Effect RPC gateway. The transport stays dynamic,
-  while `makeDomainRpcClient(...)` shows how shared-code clients can recover
-  selection-aware TypeScript types.
+- `rpc-dispatch.ts` — dynamic Effect RPC gateway: the whole domain behind two
+  static procedures. The server forwards to `domain.handleDispatch(...)` /
+  `handleSubscription(...)`; the client is `Domain.wireClient(...)`, which
+  recovers exact `domain.execute` / `domain.subscribe` typing over the wire.
+  The file itself is only the RPC transport glue.
 - `http-stream.ts` — HTTP NDJSON streaming with `domain.bindSubscriptions(...)`.
 - `rpc-stream.ts` — Effect RPC streaming with `domain.bindSubscriptions(...)`.
 - `batching.ts` — relation-like field loading with `field({ key, resolve })`
