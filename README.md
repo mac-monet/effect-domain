@@ -134,7 +134,9 @@ handler's error channel is `never` and any transport can forward it as-is:
 
 ```ts
 // HTTP route, RPC handler, worker message — all the same line:
-const encoded = yield * domain.handleDispatch({ name, args, select });
+const handler = Effect.gen(function* () {
+  return yield* domain.handleDispatch({ name, args, select });
+});
 ```
 
 `Domain.wireClient(...)` is the client mirror. Give it the domain and "how to
@@ -149,12 +151,13 @@ const client = Domain.wireClient(domain, {
   subscribe: (request) => rpcClient.DomainSubscribe(request),
 });
 
-const user =
-  yield *
-  client.execute("getUser", {
+const program = Effect.gen(function* () {
+  // fails with UserNotFound | GatewayError | ... — all typed
+  return yield* client.execute("getUser", {
     args: { id: "1" },
     select: { id: true, fullName: true },
-  }); // fails with UserNotFound | GatewayError | ... — all typed
+  });
+});
 ```
 
 Serializing failures requires each fallible operation to declare an `error`
