@@ -5,16 +5,22 @@ import { domain } from "../examples/domain.ts";
 import { webHandler } from "../examples/http-dispatch.ts";
 import { rpc, RpcLive } from "../examples/rpc-dispatch.ts";
 
-// Result.Result serializes to { _id: "Result", _tag: "Success" | "Failure", value }.
-// Over the wire we work with that plain shape — Result methods need a live prototype.
+// The HTTP example encodes every response with dispatchResultSchemaDynamic,
+// so the body is the schema wire shape at every level:
+// { _tag: "Success", success } | { _tag: "Failure", failure }.
 type WireResult<A> =
-  | { readonly _id: "Result"; readonly _tag: "Success"; readonly value: A }
-  | { readonly _id: "Result"; readonly _tag: "Failure"; readonly value: unknown };
+  | { readonly _tag: "Success"; readonly success: A }
+  | { readonly _tag: "Failure"; readonly failure: unknown };
 type UserWireResult = Record<string, WireResult<string>>;
 const ok = <A>(r: WireResult<A>): A => {
   if (r._tag === "Failure")
-    throw new Error(`Expected Success, got Failure: ${JSON.stringify(r.value)}`);
-  return r.value;
+    throw new Error(`Expected Success, got Failure: ${JSON.stringify(r.failure)}`);
+  return r.success;
+};
+const failed = (r: WireResult<unknown>): unknown => {
+  if (r._tag === "Success")
+    throw new Error(`Expected Failure, got Success: ${JSON.stringify(r.success)}`);
+  return r.failure;
 };
 
 describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
@@ -35,13 +41,14 @@ describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
     );
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as UserWireResult & {
-      readonly profile: WireResult<UserWireResult>;
-    };
-    expect(ok(body.id)).toBe("1");
-    expect(ok(body.fullName)).toBe("Alice Anderson");
-    expect(ok(body.greeting)).toBe("Dr. Alice Anderson");
-    expect(ok(ok(body.profile).location)).toBe("Taipei");
+    const body = (await response.json()) as WireResult<
+      UserWireResult & { readonly profile: WireResult<UserWireResult> }
+    >;
+    const user = ok(body);
+    expect(ok(user.id)).toBe("1");
+    expect(ok(user.fullName)).toBe("Alice Anderson");
+    expect(ok(user.greeting)).toBe("Dr. Alice Anderson");
+    expect(ok(ok(user.profile).location)).toBe("Taipei");
   });
 
   it("POST /listUsers walks each row's selected fields", async () => {
@@ -55,8 +62,8 @@ describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
     );
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as ReadonlyArray<Record<string, WireResult<string>>>;
-    expect(body.map((row) => ok(row.fullName))).toEqual(["Alice Anderson", "Bob Brown"]);
+    const body = (await response.json()) as WireResult<ReadonlyArray<UserWireResult>>;
+    expect(ok(body).map((row) => ok(row.fullName))).toEqual(["Alice Anderson", "Bob Brown"]);
   });
 
   it("POST /createUser persists and returns the new row", async () => {
@@ -70,8 +77,8 @@ describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
       }),
     );
 
-    const body = (await response.json()) as Record<string, WireResult<string>>;
-    expect(ok(body.fullName)).toBe("Charlie Carter");
+    const body = (await response.json()) as WireResult<UserWireResult>;
+    expect(ok(ok(body).fullName)).toBe("Charlie Carter");
   });
 
   it("POST /getUser returns 400 for invalid args", async () => {
@@ -86,9 +93,8 @@ describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
     );
 
     expect(response.status).toBe(400);
-    const body = (await response.json()) as { readonly _tag: string; readonly operation: string };
-    expect(body._tag).toBe("ArgsParseError");
-    expect(body.operation).toBe("getUser");
+    const body = (await response.json()) as WireResult<never>;
+    expect(failed(body)).toMatchObject({ _tag: "ArgsParseError", operation: "getUser" });
   });
 
   it("POST /listUsers returns 400 for invalid select", async () => {
@@ -102,9 +108,8 @@ describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
     );
 
     expect(response.status).toBe(400);
-    const body = (await response.json()) as { readonly _tag: string; readonly operation: string };
-    expect(body._tag).toBe("SelectionParseError");
-    expect(body.operation).toBe("listUsers");
+    const body = (await response.json()) as WireResult<never>;
+    expect(failed(body)).toMatchObject({ _tag: "SelectionParseError", operation: "listUsers" });
   });
 
   it("POST /getUser returns 404 for typed operation failure", async () => {
@@ -119,15 +124,11 @@ describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
     );
 
     expect(response.status).toBe(404);
-    const body = (await response.json()) as {
-      readonly _tag: string;
-      readonly id: string;
-      readonly message: string;
-    };
-    expect(body).toEqual({
-      _tag: "UserNotFound",
-      id: "missing",
-      message: "User missing not found",
+    const body = (await response.json()) as WireResult<never>;
+    expect(failed(body)).toMatchObject({
+      _tag: "OperationError",
+      operation: "getUser",
+      cause: { _tag: "UserNotFound", id: "missing" },
     });
   });
 
