@@ -16,7 +16,6 @@ import {
   type DomainInstance,
   GatewayError,
   OperationError,
-  type PreparedDispatch,
   type RootSelectionFor,
   type Selection,
 } from "../src/index.ts";
@@ -107,41 +106,16 @@ export const makeDomainRpc = <Ops extends Record<string, AnyOperationDef>, Provi
     dom.dispatchResultSchemaDynamic(name, select);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Provided sits in an Exclude<>; only `any` unifies every provided domain.
-  const serverLayer = (liveDomain: DomainInstance<Ops, any, never, never>) => {
-    // A fully provided domain's prepared dispatch needs no services; the
-    // generic Provided/AllR machinery can't reduce that, so pin it here.
-    const prepare = (config: DispatchRequest) =>
-      liveDomain.prepareDispatch(config) as Effect.Effect<
-        PreparedDispatch<never, unknown>,
-        GatewayError
-      >;
-    const encodeWith = (request: DispatchRequest, select: Selection | undefined) =>
-      Schema.encodeEffect(codecFor(request.name, select));
-    return DomainRpcs.toLayer({
+  const serverLayer = (liveDomain: DomainInstance<Ops, any, never, never>) =>
+    // handleDispatch/handleSubscription are the full server-side wire
+    // pipeline (validate → execute → encode); the handlers just forward.
+    // A fully provided domain needs no services, so pin R to never.
+    DomainRpcs.toLayer({
       DomainExecute: (request: DispatchRequest) =>
-        prepare(request).pipe(
-          Effect.matchEffect({
-            onFailure: (gatewayError) => encodeWith(request, undefined)(Result.fail(gatewayError)),
-            onSuccess: (prepared) =>
-              prepared.execute().pipe(Effect.flatMap(encodeWith(request, prepared.select))),
-          }),
-          Effect.orDie,
-        ),
+        liveDomain.handleDispatch(request) as Effect.Effect<unknown>,
       DomainSubscribe: (request: DispatchRequest) =>
-        liveDomain
-          .dispatchSubscription(request)
-          .pipe(
-            Stream.mapEffect((item) =>
-              encodeWith(
-                request,
-                request.select as Selection | undefined,
-              )(item as Result.Result<unknown, GatewayError | OperationError<unknown>>).pipe(
-                Effect.orDie,
-              ),
-            ),
-          ),
+        liveDomain.handleSubscription(request) as Stream.Stream<unknown>,
     });
-  };
 
   const unwrap = <A>(result: Result.Result<A, GatewayError | OperationError<unknown>>) =>
     Result.isFailure(result)

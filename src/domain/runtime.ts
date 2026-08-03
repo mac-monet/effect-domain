@@ -254,6 +254,39 @@ function makeDomainWithLayers<
     return applyLayersStream(toStream(op, config));
   }
 
+  // The total wire codec behind dispatchResultSchemaDynamic, handleDispatch,
+  // and handleSubscription. Unknown names and unbuildable selections fall back
+  // to the gateway codec, which decodes exactly what the server can produce
+  // for them (such dispatches fail at the boundary with a GatewayError).
+  function dynamicResultCodec(name: string, selection: Selection | undefined): DynamicCodec {
+    const op = Object.hasOwn(ops, name) ? ops[name]! : undefined;
+    if (op === undefined) return gatewayResultCodec();
+    let success: DynamicCodec;
+    try {
+      success = rootToResponseSchema(registry, op.type.ast, selection);
+    } catch {
+      return gatewayResultCodec();
+    }
+    const failure = Schema.Union([GatewayError, OperationError.schema(op.error ?? Schema.Never)]);
+    // Success/failure services are unknown at this erased level; the public
+    // interface asserts never per the responseSchema convention.
+    return ResultCodec(success, failure) as DynamicCodec;
+  }
+
+  // Encode a live dispatch Result into the wire envelope. An encode failure
+  // means the produced result doesn't match the domain's own codec — a graph
+  // invariant violation, so it dies rather than surfacing as a typed error.
+  function encodeDispatchResult(name: string, selection: Selection | undefined) {
+    const encode = Schema.encodeEffect(dynamicResultCodec(name, selection));
+    return (result: unknown) =>
+      Effect.orDie(
+        encode(result as Parameters<typeof encode>[0]) as Effect.Effect<
+          unknown,
+          Schema.SchemaError
+        >,
+      );
+  }
+
   function operationNames(streamed: boolean): ReadonlyArray<string> {
     return Object.entries(ops)
       .filter(([, op]) => op._stream === streamed)
@@ -333,18 +366,7 @@ function makeDomainWithLayers<
       return ResultCodec(success, failure);
     },
     dispatchResultSchemaDynamic(name: string, selection: Selection | undefined) {
-      const op = Object.hasOwn(ops, name) ? ops[name]! : undefined;
-      if (op === undefined) return gatewayResultCodec();
-      let success: DynamicCodec;
-      try {
-        success = rootToResponseSchema(registry, op.type.ast, selection);
-      } catch {
-        // Invalid selection: dispatch fails at the boundary, so the gateway
-        // fallback decodes everything the server can produce for it.
-        return gatewayResultCodec();
-      }
-      const failure = Schema.Union([GatewayError, OperationError.schema(op.error ?? Schema.Never)]);
-      return ResultCodec(success, failure);
+      return dynamicResultCodec(name, selection);
     },
     bind(config: RuntimeBindConfig) {
       const service: Record<string, (args?: unknown) => Effect.Effect<unknown, unknown, unknown>> =
@@ -422,6 +444,31 @@ function makeDomainWithLayers<
           decodeFor(config, "subscription"),
           config.name,
         ),
+      );
+    },
+    handleDispatch(config: DispatchRequest, options?: DispatchOptions) {
+      // dispatch already lifts every expected outcome (gateway errors and
+      // operation E) into the Result value; encoding it with the request's
+      // own dynamic codec yields the complete wire pipeline.
+      return applyLayers(
+        liftBoundaryToResult(
+          (decoded) => executeBoundary(decoded, options),
+          decodeFor(config, "operation"),
+          config.name,
+        ),
+      ).pipe(
+        Effect.flatMap(encodeDispatchResult(config.name, config.select as Selection | undefined)),
+      );
+    },
+    handleSubscription(config: DispatchRequest, options?: DispatchOptions) {
+      return applyLayersStream(
+        liftBoundaryStreamToResult(
+          (decoded) => streamBoundary(decoded, options?.concurrency),
+          decodeFor(config, "subscription"),
+          config.name,
+        ),
+      ).pipe(
+        Stream.mapEffect(encodeDispatchResult(config.name, config.select as Selection | undefined)),
       );
     },
     invocationKey(invocation: Invocation, options?: InvocationKeyOptions) {

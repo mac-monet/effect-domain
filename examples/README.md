@@ -16,11 +16,11 @@ The other files expose or consume that graph without redefining the domain model
 - `http-api.ts` — fixed HTTP routes with Effect HttpApi. Each route chooses a
   stable graph selection and derives its response schema from that selection.
 - `http-dispatch.ts` — GraphQL-like dynamic HTTP gateway over plain JSON. The
-  client sends runtime `args` and `select`; the server validates them with
-  `domain.prepareDispatch(...)` and encodes every response with
-  `domain.dispatchResultSchemaDynamic(name, select)`, so declared errors (and
-  gateway errors) round-trip the same wire envelope the RPC adapter uses. This
-  is useful when you want selectable responses over ordinary HTTP without
+  client sends runtime `args` and `select`; the server pipes the envelope
+  through `domain.handleDispatch(...)`, which validates, executes, and encodes
+  the response with the domain's own wire codec, so declared errors (and
+  gateway errors) round-trip the same envelope the RPC adapter uses. This is
+  useful when you want selectable responses over ordinary HTTP without
   GraphQL's parser, schema language, introspection, or execution semantics.
 - `http-dispatch-production.ts` — a production-style dynamic gateway wrapper
   with an operation allowlist, bearer auth, JSON/body checks, selection depth

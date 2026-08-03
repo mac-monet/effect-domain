@@ -1,7 +1,6 @@
-import { Effect, Result, Schema } from "effect";
+import { Effect } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
-import { domain, UserNotFound, UserRepoLive } from "./domain.ts";
-import { OperationError, type Selection, UnknownOperation } from "../src/index.ts";
+import { domain, UserRepoLive } from "./domain.ts";
 
 // GraphQL-like dynamic dispatch over plain JSON. Clients choose an operation by
 // URL and send its args plus a runtime selection:
@@ -9,16 +8,23 @@ import { OperationError, type Selection, UnknownOperation } from "../src/index.t
 //   POST /getUser
 //   { "args": { "id": "1" }, "select": { "id": true, "fullName": true } }
 //
-// Every response body is the schema-encoded dispatch Result — the same wire
-// envelope the RPC adapter uses — so a typed client can decode it with
-// `domain.dispatchResultSchemaDynamic(name, select)` and recover declared
-// errors (e.g. UserNotFound) as class instances. The HTTP status is derived
-// from the failure, not the other way around.
-const statusFor = (failure: unknown): number =>
-  failure instanceof UnknownOperation ||
-  (failure instanceof OperationError && failure.cause instanceof UserNotFound)
+// `domain.handleDispatch` is the whole server pipeline: validate the envelope,
+// execute, and encode the dispatch Result with the domain's own wire codec.
+// The body is `{ _tag: "Success", success } | { _tag: "Failure", failure }` —
+// the same envelope the RPC adapter uses — so a typed client can decode it
+// with `domain.dispatchResultSchemaDynamic(name, select)` and recover declared
+// errors (e.g. UserNotFound) as class instances. HTTP status is policy, so it
+// stays here in the adapter, read off the encoded envelope.
+const statusFor = (encoded: unknown): number => {
+  const wire = encoded as {
+    readonly _tag: string;
+    readonly failure?: { readonly _tag?: string; readonly cause?: { readonly _tag?: string } };
+  };
+  if (wire._tag === "Success") return 200;
+  return wire.failure?._tag === "UnknownOperation" || wire.failure?.cause?._tag === "UserNotFound"
     ? 404
     : 400;
+};
 
 function operationRoute(name: string) {
   return HttpRouter.route(
@@ -27,20 +33,12 @@ function operationRoute(name: string) {
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
       const body = (yield* request.json) as { readonly args?: unknown; readonly select?: unknown };
-      const result = yield* domain
-        .prepareDispatch({ name, args: body.args, select: body.select })
-        .pipe(
-          Effect.matchEffect({
-            onFailure: (gatewayError) => Effect.succeed(Result.fail(gatewayError)),
-            onSuccess: (prepared) => prepared.execute(),
-          }),
-        );
-      const encoded = yield* Schema.encodeEffect(
-        domain.dispatchResultSchemaDynamic(name, body.select as Selection | undefined),
-      )(result);
-      return yield* HttpServerResponse.json(encoded, {
-        status: Result.isFailure(result) ? statusFor(result.failure) : 200,
+      const encoded = yield* domain.handleDispatch({
+        name,
+        args: body.args,
+        select: body.select,
       });
+      return yield* HttpServerResponse.json(encoded, { status: statusFor(encoded) });
     }),
   );
 }

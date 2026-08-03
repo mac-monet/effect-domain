@@ -334,6 +334,43 @@ export interface DomainInstance<
     Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR
   >;
   /**
+   * The complete server-side wire pipeline for one dynamic invocation:
+   * `dispatch(config)` encoded with
+   * `dispatchResultSchemaDynamic(config.name, config.select)`. The returned
+   * value is the encoded dispatch-Result envelope
+   * (`{ _tag: "Success", success } | { _tag: "Failure", failure }`), ready to
+   * serialize onto any transport; a client decodes it with the same codec.
+   *
+   * All expected outcomes — gateway errors and operation E — are inside the
+   * envelope's Failure branch, so the Effect error channel is `never`. An
+   * encode failure means the domain produced a result its own codec rejects
+   * (a graph invariant violation) and dies.
+   *
+   * This is the top rung of the dispatch ladder: use `handleDispatch` for
+   * simple transports, `prepareDispatch` when policy (auth, limits, caching)
+   * must run between validation and execution, and `dispatch` when nothing
+   * crosses a wire and live `Result` values are wanted.
+   *
+   * @since 0.3.0
+   */
+  handleDispatch(
+    config: DispatchRequest,
+    options?: DispatchOptions,
+  ): Effect.Effect<unknown, never, Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR>;
+  /**
+   * Subscription sibling of {@link handleDispatch}: `dispatchSubscription`
+   * with every emitted item encoded through the same dynamic wire codec.
+   * Each stream element is one encoded dispatch-Result envelope — the same
+   * shape `handleDispatch` produces — so subscription items and one-shot
+   * responses share a single client decode path.
+   *
+   * @since 0.3.0
+   */
+  handleSubscription(
+    config: DispatchRequest,
+    options?: DispatchOptions,
+  ): Stream.Stream<unknown, never, Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR>;
+  /**
    * Canonical truncated SHA-256 over `(name, args, select)`. Stable across key
    * order, `[true]` ↔ `true`, multi-alias entry order, and empty `select: {}`
    * blocks. Defaults to 8 bytes / 16 hex chars for compact cache keys; use 16
