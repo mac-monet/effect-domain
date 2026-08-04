@@ -19,15 +19,21 @@ export type RuntimeBindConfig = Readonly<
   Record<string, { readonly to?: string; readonly select?: Selection }>
 >;
 
-export interface PreparedDispatch<ProvidedR = never, E = unknown> {
+export interface PreparedDispatch<ProvidedR = never, E = unknown, ProvidedE = never> {
   readonly name: string;
   readonly args: unknown;
   readonly select?: Selection;
   readonly invocationKey: string;
   readonly analysis: SelectionAnalysis;
+  /**
+   * Operation E and gateway errors surface inside the Result value; the
+   * Effect error channel carries only `ProvidedE` — failures acquiring
+   * layers applied via `provide()`, which happen outside the boundary
+   * lifting and cannot be encoded into the envelope.
+   */
   execute(
     options?: DispatchOptions,
-  ): Effect.Effect<Result.Result<unknown, GatewayError | OperationError<E>>, never, ProvidedR>;
+  ): Effect.Effect<Result.Result<unknown, GatewayError | OperationError<E>>, ProvidedE, ProvidedR>;
 }
 
 export interface DomainInstance<
@@ -299,7 +305,7 @@ export interface DomainInstance<
     options?: DispatchOptions,
   ): Effect.Effect<
     Result.Result<unknown, GatewayError | OperationError<DomainTypes.AllE<Ops> | ProvidedE>>,
-    never,
+    ProvidedE,
     Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR
   >;
   /**
@@ -318,7 +324,8 @@ export interface DomainInstance<
   ): Effect.Effect<
     PreparedDispatch<
       Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR,
-      DomainTypes.AllE<Ops> | ProvidedE
+      DomainTypes.AllE<Ops> | ProvidedE,
+      ProvidedE
     >,
     GatewayError
   >;
@@ -326,7 +333,8 @@ export interface DomainInstance<
    * Subscription sibling of `dispatch`. Returns the stream directly (not
    * `Effect<Stream<…>>`); boundary parse failures emit as the first and only
    * `Result.failure` element via `Stream.unwrap`. Operation E is promoted to
-   * `Result.failure(OperationError(...))` so the stream E channel is never.
+   * `Result.failure(OperationError(...))`; the stream E channel carries only
+   * `ProvidedE` (layer acquisition failures — `never` for infallible layers).
    *
    * Pipe through Domain.orFailStream to move OperationError<E> into the stream
    * E channel.
@@ -336,7 +344,7 @@ export interface DomainInstance<
     options?: DispatchOptions,
   ): Stream.Stream<
     Result.Result<unknown, GatewayError | OperationError<DomainTypes.AllE<Ops> | ProvidedE>>,
-    never,
+    ProvidedE,
     Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR
   >;
   /**
@@ -348,9 +356,12 @@ export interface DomainInstance<
    * serialize onto any transport; a client decodes it with the same codec.
    *
    * All expected outcomes — gateway errors and operation E — are inside the
-   * envelope's Failure branch, so the Effect error channel is `never`. An
-   * encode failure means the domain produced a result its own codec rejects
-   * (a graph invariant violation) and dies.
+   * envelope's Failure branch. The Effect error channel carries only
+   * `ProvidedE`: failures acquiring layers applied via `provide()`, which
+   * happen outside the boundary lifting and cannot be encoded into the
+   * envelope (`never` for infallible layers). An encode failure means the
+   * domain produced a result its own codec rejects (a graph invariant
+   * violation) and dies.
    *
    * Serializing failures requires every fallible operation to declare an
    * `error` schema: the `this` parameter enforces
@@ -370,7 +381,7 @@ export interface DomainInstance<
     this: DomainTypes.RequireErrorSchemas<Ops>,
     config: DispatchRequest,
     options?: WireDispatchOptions,
-  ): Effect.Effect<unknown, never, Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR>;
+  ): Effect.Effect<unknown, ProvidedE, Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR>;
   /**
    * Subscription sibling of {@link handleDispatch}: `dispatchSubscription`
    * with every emitted item encoded through the same dynamic wire codec.
@@ -385,7 +396,7 @@ export interface DomainInstance<
     this: DomainTypes.RequireErrorSchemas<Ops>,
     config: DispatchRequest,
     options?: WireDispatchOptions,
-  ): Stream.Stream<unknown, never, Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR>;
+  ): Stream.Stream<unknown, ProvidedE, Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR>;
   /**
    * Canonical truncated SHA-256 over `(name, args, select)`. Stable across key
    * order, `[true]` ↔ `true`, multi-alias entry order, and empty `select: {}`

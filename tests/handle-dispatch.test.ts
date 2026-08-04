@@ -1,6 +1,6 @@
-import { Effect, Exit, Option, Result, Schema, Stream } from "effect";
+import { Effect, Exit, Layer, Option, Result, Schema, Stream } from "effect";
 import { describe, expect, expectTypeOf, it } from "vite-plus/test";
-import { domain, UserNotFound, UserRepoLive } from "../examples/domain.ts";
+import { domain, UserNotFound, UserRepo, UserRepoLive } from "../examples/domain.ts";
 import { Domain, operation, OperationError, UnknownOperation } from "../src/index.ts";
 
 const liveDomain = domain.provide(UserRepoLive);
@@ -75,6 +75,39 @@ describe("handleDispatch compile-time gates", () => {
 
     expect(withReads).toBeDefined();
     expect(unserializable).toBeDefined();
+  });
+});
+
+describe("ProvidedE in dispatch-family error channels", () => {
+  it("types layer acquisition failures instead of claiming never", () => {
+    class LayerBoom extends Schema.TaggedErrorClass<LayerBoom>()("LayerBoom", {}) {}
+    const failing = domain.provide(
+      Layer.effect(UserRepo)(Effect.fail(new LayerBoom()) as Effect.Effect<never, LayerBoom>),
+    );
+    expectTypeOf(failing.dispatch({ name: "getUser" })).toExtend<
+      Effect.Effect<unknown, LayerBoom, never>
+    >();
+    expectTypeOf(failing.handleDispatch({ name: "getUser" })).toExtend<
+      Effect.Effect<unknown, LayerBoom, never>
+    >();
+    expectTypeOf(failing.handleSubscription({ name: "watchUsers" })).toExtend<
+      Stream.Stream<unknown, LayerBoom, never>
+    >();
+    // The infallible-layer domain keeps never.
+    expectTypeOf(liveDomain.handleDispatch({ name: "getUser" })).toExtend<
+      Effect.Effect<unknown, never, never>
+    >();
+  });
+
+  it("propagates the layer failure at runtime through handleDispatch", async () => {
+    class LayerBoom extends Schema.TaggedErrorClass<LayerBoom>()("LayerBoom", {}) {}
+    const failing = domain.provide(
+      Layer.effect(UserRepo)(Effect.fail(new LayerBoom()) as Effect.Effect<never, LayerBoom>),
+    );
+    const exit = await Effect.runPromiseExit(
+      failing.handleDispatch({ name: "getUser", args: { id: "1" }, select: { id: true } }),
+    );
+    expect(Exit.findErrorOption(exit).pipe(Option.getOrThrow)).toBeInstanceOf(LayerBoom);
   });
 });
 
