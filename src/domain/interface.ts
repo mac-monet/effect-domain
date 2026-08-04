@@ -284,8 +284,10 @@ export interface DomainInstance<
    * Convenience gateway entry for decoded or server-constructed dynamic
    * invocations. Decodes operation args + select and immediately executes the
    * operation. All expected outcomes (boundary errors AND operation E) surface
-   * as Result.failure values wrapped in GatewayError or OperationError<E>. Only
-   * defects reach the Effect failure channel (E = never).
+   * as Result.failure values wrapped in GatewayError or OperationError<E>. The
+   * Effect failure channel carries only `ProvidedE` (layer acquisition
+   * failures — `never` for infallible layers); everything else expected is in
+   * the Result, and only defects die.
    *
    * For untrusted transports that need pre-execution policy checks, prefer
    * `decodeDispatchRequest` (when the whole invocation is raw data) followed by
