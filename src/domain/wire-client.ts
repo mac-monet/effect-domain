@@ -50,9 +50,10 @@ type ClientErrors<Op, TE> =
   | Schema.SchemaError
   | TE;
 
-type InvokeConfig<Op, S> = Omit<
-  DomainTypes.DomainExecuteConfig<DomainTypes.ExtractType<Op>, DomainTypes.ExtractArgs<Op>, S>,
-  "reads" | "concurrency"
+type InvokeConfig<Op, S> = DomainTypes.DomainInvokeConfig<
+  DomainTypes.ExtractType<Op>,
+  DomainTypes.ExtractArgs<Op>,
+  S
 >;
 
 /**

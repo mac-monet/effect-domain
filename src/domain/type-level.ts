@@ -192,6 +192,15 @@ type SelectionConfig<T, S> = [RootSelectionFor<T>] extends [never]
   ? { readonly select?: undefined }
   : { readonly select: S };
 
+/**
+ * Wire-invocation config: `args` and `select` only. Structurally the
+ * remote subset of {@link DomainExecuteConfig} (no `reads`/`concurrency` —
+ * both are server-side execution policy, never on the wire), but defined
+ * directly rather than via `Omit`: mapped types block `const S` inference
+ * at call sites, which silently degrades nested selection result types.
+ */
+export type DomainInvokeConfig<T, Args, S> = ArgsConfig<Args> & SelectionConfig<T, S>;
+
 export type DomainExecuteConfig<T, Args, S> = ArgsConfig<Args> &
   SelectionConfig<T, S> & {
     readonly concurrency?: number | "unbounded";

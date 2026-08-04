@@ -1,5 +1,5 @@
 import { Effect, Exit, Option, Result, Schema, Stream } from "effect";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, expectTypeOf, it } from "vite-plus/test";
 import { domain, UserNotFound, UserRepoLive } from "../examples/domain.ts";
 import { Domain, OperationError, UnknownOperation } from "../src/index.ts";
 
@@ -88,6 +88,18 @@ describe("wireClient over handleDispatch (in-process wire)", () => {
   const client = Domain.wireClient(domain, {
     execute: (request) => liveDomain.handleDispatch(request),
     subscribe: (request) => liveDomain.handleSubscription(request),
+  });
+
+  it("types nested projections as Result trees (regression: Omit broke const-S inference)", () => {
+    const eff = client.execute("getUser", {
+      args: { id: "1" },
+      select: { id: true, profile: { select: { location: true } } },
+    });
+    type Success = Effect.Success<typeof eff>;
+    expectTypeOf<Success["id"]>().toEqualTypeOf<Result.Result<string, unknown>>();
+    expectTypeOf<Success["profile"]>().toEqualTypeOf<
+      Result.Result<{ location: Result.Result<string, unknown> }, unknown>
+    >();
   });
 
   it("round-trips a typed success", async () => {

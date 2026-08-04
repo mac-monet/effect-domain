@@ -189,12 +189,7 @@ describe("Examples: RPC dynamic gateway via domain.dispatch", () => {
 
     expect(Result.getOrThrow(user.fullName)).toBe("Alice Anderson");
     expect(Result.getOrThrow(user.greeting)).toBe("Dr. Alice Anderson");
-    // Nested projections are Result-wrapped at runtime; the nested projection
-    // type is looser here (same cast as walker tests).
-    const profile = Result.getOrThrow(user.profile) as unknown as Record<
-      string,
-      Result.Result<unknown, unknown>
-    >;
+    const profile = Result.getOrThrow(user.profile);
     expect(Result.getOrThrow(profile.location)).toBe("Taipei");
 
     expect(list.map((r) => Result.getOrThrow(r.firstName))).toEqual(["Alice", "Bob"]);
