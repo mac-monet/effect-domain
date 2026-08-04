@@ -44,6 +44,21 @@ export type MissingErrorSchemas<Ops> = {
       : never;
 }[keyof Ops];
 
+/**
+ * Constraint for entry points that serialize failures — the wire handlers
+ * (`handleDispatch`/`handleSubscription` via their `this` parameter) and
+ * `Domain.wireClient`: satisfied only when every fallible operation declared
+ * an `error` schema, otherwise the offending operation names surface in the
+ * compile error. Applied at serialization boundaries, never at
+ * `Domain.make` — domains used purely in-process shouldn't pay for schemas
+ * they don't need.
+ */
+export type RequireErrorSchemas<Ops> = [MissingErrorSchemas<Ops>] extends [never]
+  ? unknown
+  : {
+      readonly "operations missing a declared error schema": MissingErrorSchemas<Ops>;
+    };
+
 export type ExtractE<Op> =
   Op extends OperationDefinition<infer _T, infer _A, infer E, infer _R> ? E : never;
 export type ExtractR<Op> =

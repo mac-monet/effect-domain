@@ -1,7 +1,7 @@
 import { Effect, Exit, Option, Result, Schema, Stream } from "effect";
 import { describe, expect, expectTypeOf, it } from "vite-plus/test";
 import { domain, UserNotFound, UserRepoLive } from "../examples/domain.ts";
-import { Domain, OperationError, UnknownOperation } from "../src/index.ts";
+import { Domain, operation, OperationError, UnknownOperation } from "../src/index.ts";
 
 const liveDomain = domain.provide(UserRepoLive);
 
@@ -54,6 +54,27 @@ describe("handleDispatch", () => {
       liveDomain.handleDispatch({ name: "getUser", args: { id: 1 }, select: { id: true } }),
     );
     expect(badArgs).toMatchObject({ _tag: "Failure", failure: { _tag: "ArgsParseError" } });
+  });
+});
+
+describe("handleDispatch compile-time gates", () => {
+  it("rejects reads options and undeclared error schemas", () => {
+    const request = { name: "getUser", args: { id: "1" }, select: { id: true } };
+    // @ts-expect-error reads reshapes the success value and cannot round-trip the wire codec
+    const withReads = liveDomain.handleDispatch(request, { reads: true });
+
+    class Boom extends Schema.TaggedErrorClass<Boom>()("Boom", { message: Schema.String }) {}
+    const incomplete = Domain.make({
+      explode: operation({
+        type: Schema.String,
+        resolve: () => Effect.fail(new Boom({ message: "x" })) as Effect.Effect<string, Boom>,
+      }),
+    });
+    // @ts-expect-error explode fails with Boom but declares no error schema
+    const unserializable = incomplete.handleDispatch({ name: "explode" });
+
+    expect(withReads).toBeDefined();
+    expect(unserializable).toBeDefined();
   });
 });
 

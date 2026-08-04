@@ -16,13 +16,8 @@ import type * as DomainTypes from "./type-level.ts";
  * @since 0.1.0
  * @category models
  */
-export type RequireErrorSchemas<Ops extends Record<string, AnyOperationDef>> = [
-  DomainTypes.MissingErrorSchemas<Ops>,
-] extends [never]
-  ? unknown
-  : {
-      readonly "operations missing a declared error schema": DomainTypes.MissingErrorSchemas<Ops>;
-    };
+export type RequireErrorSchemas<Ops extends Record<string, AnyOperationDef>> =
+  DomainTypes.RequireErrorSchemas<Ops>;
 
 /**
  * What {@link wireClient} needs from a transport: send one dispatch envelope,

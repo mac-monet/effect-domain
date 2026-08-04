@@ -1,6 +1,12 @@
 import type { Effect, Layer, Result, Schema, Stream } from "effect";
 import type { AnyOperationDef } from "../define.ts";
-import type { DispatchOptions, DispatchRequest, GatewayError, OperationError } from "../gateway.ts";
+import type {
+  DispatchOptions,
+  DispatchRequest,
+  GatewayError,
+  OperationError,
+  WireDispatchOptions,
+} from "../gateway.ts";
 import type { Inspection } from "../inspect.ts";
 import type { DomainTopology } from "./topology.ts";
 import type { Invocation, InvocationKeyOptions } from "../invocation-key.ts";
@@ -346,6 +352,13 @@ export interface DomainInstance<
    * encode failure means the domain produced a result its own codec rejects
    * (a graph invariant violation) and dies.
    *
+   * Serializing failures requires every fallible operation to declare an
+   * `error` schema: the `this` parameter enforces
+   * {@link DomainTypes.RequireErrorSchemas} at the call site, naming any
+   * operation missing one. Options are {@link WireDispatchOptions} —
+   * `reads` is excluded because the read-set envelope cannot round-trip
+   * the wire codec.
+   *
    * This is the top rung of the dispatch ladder: use `handleDispatch` for
    * simple transports, `prepareDispatch` when policy (auth, limits, caching)
    * must run between validation and execution, and `dispatch` when nothing
@@ -354,21 +367,24 @@ export interface DomainInstance<
    * @since 0.1.0
    */
   handleDispatch(
+    this: DomainTypes.RequireErrorSchemas<Ops>,
     config: DispatchRequest,
-    options?: DispatchOptions,
+    options?: WireDispatchOptions,
   ): Effect.Effect<unknown, never, Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR>;
   /**
    * Subscription sibling of {@link handleDispatch}: `dispatchSubscription`
    * with every emitted item encoded through the same dynamic wire codec.
    * Each stream element is one encoded dispatch-Result envelope — the same
    * shape `handleDispatch` produces — so subscription items and one-shot
-   * responses share a single client decode path.
+   * responses share a single client decode path. Enforces
+   * {@link DomainTypes.RequireErrorSchemas} the same way.
    *
    * @since 0.1.0
    */
   handleSubscription(
+    this: DomainTypes.RequireErrorSchemas<Ops>,
     config: DispatchRequest,
-    options?: DispatchOptions,
+    options?: WireDispatchOptions,
   ): Stream.Stream<unknown, never, Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR>;
   /**
    * Canonical truncated SHA-256 over `(name, args, select)`. Stable across key

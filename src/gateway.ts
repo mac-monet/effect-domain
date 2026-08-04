@@ -63,6 +63,19 @@ export interface DispatchOptions {
 }
 
 /**
+ * The {@link DispatchOptions} subset accepted by the wire handlers
+ * (`handleDispatch`/`handleSubscription`). Excludes `reads`: the read-set
+ * envelope reshapes the success value, which cannot round-trip the wire
+ * codec — collect read sets with `dispatch`/`prepareDispatch` instead.
+ *
+ * @since 0.1.0
+ * @category models
+ */
+export interface WireDispatchOptions {
+  readonly concurrency?: number | "unbounded";
+}
+
+/**
  * Decodes an untrusted `{ args?, select? }` payload.
  *
  * @since 0.1.0

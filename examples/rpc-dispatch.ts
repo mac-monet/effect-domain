@@ -46,7 +46,9 @@ export const makeDomainRpc = <Ops extends Record<string, AnyOperationDef>, Provi
   dom: DomainInstance<Ops, Provided, PE, PR> & Domain.RequireErrorSchemas<Ops>,
 ) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Provided sits in an Exclude<>; only `any` unifies every provided domain.
-  const serverLayer = (liveDomain: DomainInstance<Ops, any, never, never>) =>
+  const serverLayer = (
+    liveDomain: DomainInstance<Ops, any, never, never> & Domain.RequireErrorSchemas<Ops>,
+  ) =>
     // A fully provided domain needs no services, so pin R to never.
     DomainRpcs.toLayer({
       DomainExecute: (request: DispatchRequest) =>

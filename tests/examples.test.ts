@@ -132,6 +132,15 @@ describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
     });
   });
 
+  it("returns 400 for a literal null JSON body", async () => {
+    const response = await webHandler(
+      new Request("http://localhost/getUser", { method: "POST", body: "null" }),
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as WireResult<never>;
+    expect(failed(body)).toMatchObject({ _tag: "ArgsParseError", operation: "getUser" });
+  });
+
   it("404s an unknown path", async () => {
     const response = await webHandler(
       new Request("http://localhost/nope", {

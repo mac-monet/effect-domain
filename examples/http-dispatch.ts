@@ -32,7 +32,10 @@ function operationRoute(name: string) {
     `/${name}`,
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const body = (yield* request.json) as { readonly args?: unknown; readonly select?: unknown };
+      const body = ((yield* request.json) ?? {}) as {
+        readonly args?: unknown;
+        readonly select?: unknown;
+      };
       const encoded = yield* domain.handleDispatch({
         name,
         args: body.args,

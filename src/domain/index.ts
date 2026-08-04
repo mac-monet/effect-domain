@@ -47,7 +47,10 @@ export namespace Domain {
     DomainTypes.MissingErrorSchemas<Ops>;
   /**
    * The wire-level error type for an operation: the declared error schema's
-   * `Type` when one exists, else the resolver's inferred failure type.
+   * `Type` when one exists, else `never` — matching the runtime, which
+   * builds undeclared error codecs from `Schema.Never` and therefore cannot
+   * round-trip such failures. `MissingErrorSchemas` is the enforcement
+   * point for that.
    *
    * @since 0.1.0
    * @category models

@@ -1,4 +1,4 @@
-import { Effect, type Layer, Schema, Stream } from "effect";
+import { Effect, type Layer, Result, Schema, Stream } from "effect";
 import type { AnyOperationDef } from "../define.ts";
 import type { DynamicCodec } from "../schema/codec.ts";
 import {
@@ -11,6 +11,7 @@ import {
   liftBoundaryStreamToResult,
   liftBoundaryToResult,
   OperationError,
+  type WireDispatchOptions,
 } from "../gateway.ts";
 import type { DomainInstance, RuntimeBindConfig } from "./interface.ts";
 import { inspect as inspectOperations } from "../inspect.ts";
@@ -276,6 +277,10 @@ function makeDomainWithLayers<
   // Encode a live dispatch Result into the wire envelope. An encode failure
   // means the produced result doesn't match the domain's own codec — a graph
   // invariant violation, so it dies rather than surfacing as a typed error.
+  //
+  // The wire handlers only call this with boundary-DECODED selections (the
+  // codec cache is keyed by selection, so building codecs from raw untrusted
+  // input would let arbitrary distinct selections grow it without bound).
   function encodeDispatchResult(name: string, selection: Selection | undefined) {
     const encode = Schema.encodeEffect(dynamicResultCodec(name, selection));
     return (result: unknown) =>
@@ -285,6 +290,15 @@ function makeDomainWithLayers<
           Schema.SchemaError
         >,
       );
+  }
+
+  // Boundary failures encode through the memoized gateway codec — never the
+  // per-selection codec, which must not be built from unvalidated input.
+  function encodeGatewayFailure(gatewayError: unknown) {
+    const encode = Schema.encodeEffect(gatewayResultCodec());
+    return Effect.orDie(
+      encode(Result.fail(gatewayError)) as Effect.Effect<unknown, Schema.SchemaError>,
+    );
   }
 
   function operationNames(streamed: boolean): ReadonlyArray<string> {
@@ -446,29 +460,37 @@ function makeDomainWithLayers<
         ),
       );
     },
-    handleDispatch(config: DispatchRequest, options?: DispatchOptions) {
-      // dispatch already lifts every expected outcome (gateway errors and
-      // operation E) into the Result value; encoding it with the request's
-      // own dynamic codec yields the complete wire pipeline.
+    handleDispatch(config: DispatchRequest, options?: WireDispatchOptions) {
+      // Decode-first: boundary failures encode via the gateway codec without
+      // ever touching the per-selection codec cache; only validated
+      // selections build (and memoize) success codecs. Operation E is lifted
+      // into the Result value by liftBoundaryToResult, so the encoded
+      // envelope carries every expected outcome.
       return applyLayers(
-        liftBoundaryToResult(
-          (decoded) => executeBoundary(decoded, options),
-          decodeFor(config, "operation"),
-          config.name,
-        ),
-      ).pipe(
-        Effect.flatMap(encodeDispatchResult(config.name, config.select as Selection | undefined)),
+        Effect.matchEffect(decodeFor(config, "operation"), {
+          onFailure: encodeGatewayFailure,
+          onSuccess: (decoded) =>
+            liftBoundaryToResult(
+              (d) => executeBoundary(d, options),
+              Effect.succeed(decoded),
+              config.name,
+            ).pipe(Effect.flatMap(encodeDispatchResult(config.name, decoded.select))),
+        }),
       );
     },
-    handleSubscription(config: DispatchRequest, options?: DispatchOptions) {
+    handleSubscription(config: DispatchRequest, options?: WireDispatchOptions) {
       return applyLayersStream(
-        liftBoundaryStreamToResult(
-          (decoded) => streamBoundary(decoded, options?.concurrency),
-          decodeFor(config, "subscription"),
-          config.name,
+        Stream.unwrap(
+          Effect.match(decodeFor(config, "subscription"), {
+            onFailure: (gatewayError) => Stream.fromEffect(encodeGatewayFailure(gatewayError)),
+            onSuccess: (decoded) =>
+              liftBoundaryStreamToResult(
+                (d) => streamBoundary(d, options?.concurrency),
+                Effect.succeed(decoded),
+                config.name,
+              ).pipe(Stream.mapEffect(encodeDispatchResult(config.name, decoded.select))),
+          }),
         ),
-      ).pipe(
-        Stream.mapEffect(encodeDispatchResult(config.name, config.select as Selection | undefined)),
       );
     },
     invocationKey(invocation: Invocation, options?: InvocationKeyOptions) {

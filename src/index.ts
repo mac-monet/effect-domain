@@ -41,7 +41,12 @@ export {
   UnknownOperation,
   WrongOperationKind,
 } from "./gateway.ts";
-export type { DispatchOptions, DispatchPayload, DispatchRequest } from "./gateway.ts";
+export type {
+  DispatchOptions,
+  DispatchPayload,
+  DispatchRequest,
+  WireDispatchOptions,
+} from "./gateway.ts";
 export * as Ast from "./schema/ast-public.ts";
 export { collectSentinels, unionDiscriminator } from "./schema/sentinels.ts";
 export type { Sentinel, UnionDiscriminator } from "./schema/sentinels.ts";
