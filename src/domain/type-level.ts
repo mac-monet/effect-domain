@@ -208,7 +208,7 @@ export type DomainExecuteConfig<T, Args, S> = ArgsConfig<Args> &
  * operation result plus per-execution artifacts. Extensible — future
  * instrumentation channels (costs, timings) land here as optional fields.
  *
- * @since 0.2.0
+ * @since 0.1.0
  * @category models
  */
 export interface Execution<A> {

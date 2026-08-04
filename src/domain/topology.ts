@@ -6,7 +6,7 @@ import type { NodeRegistry } from "../registry.ts";
  * Edge data in the graph topology: the field through which one node
  * references another, and how the reference is wrapped.
  *
- * @since 0.2.0
+ * @since 0.1.0
  * @category models
  */
 export interface FieldEdge {
@@ -23,7 +23,7 @@ export interface FieldEdge {
  * composable interchange surface for adapters — traversal algorithms,
  * `Equal`/`Hash`, and diagram export come from the core Domain module.
  *
- * @since 0.2.0
+ * @since 0.1.0
  * @category models
  */
 export interface DomainTopology {

@@ -13,7 +13,7 @@ import type * as DomainTypes from "./type-level.ts";
  * — never at `Domain.make`, where domains used purely in-process shouldn't
  * pay for schemas they don't need.
  *
- * @since 0.3.0
+ * @since 0.1.0
  * @category models
  */
 export type RequireErrorSchemas<Ops extends Record<string, AnyOperationDef>> = [
@@ -31,7 +31,7 @@ export type RequireErrorSchemas<Ops extends Record<string, AnyOperationDef>> = [
  * own failure type (RpcClientError, a fetch error, ...) and flows into the
  * typed client's error channel.
  *
- * @since 0.3.0
+ * @since 0.1.0
  * @category models
  */
 export interface WireTransport<TE> {
@@ -60,7 +60,7 @@ type InvokeConfig<Op, S> = Omit<
  * operation names, args, selections, and selection-dependent result types
  * are all inferred from `Ops`, while every call round-trips a wire.
  *
- * @since 0.3.0
+ * @since 0.1.0
  * @category models
  */
 export interface WireClient<Ops extends Record<string, AnyOperationDef>, TE = never> {
@@ -103,7 +103,7 @@ export interface WireClient<Ops extends Record<string, AnyOperationDef>, TE = ne
  * ({@link RequireErrorSchemas}); without one, failures cannot round-trip
  * and construction is a compile error naming the operations.
  *
- * @since 0.3.0
+ * @since 0.1.0
  * @category constructors
  */
 export const wireClient = <

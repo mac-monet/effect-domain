@@ -14,7 +14,7 @@ import { rootPlan, type RootPlan } from "./selection/projection.ts";
  * A reference edge from one registered node to another: the field through
  * which the target node is reachable, and how the path is wrapped.
  *
- * @since 0.2.0
+ * @since 0.1.0
  * @category models
  */
 export interface NodeReference {
@@ -34,7 +34,7 @@ export interface NodeReference {
  * Everything the graph knows about one node type, extracted once from the
  * Schema AST at `Domain.make` time.
  *
- * @since 0.2.0
+ * @since 0.1.0
  * @category models
  */
 export interface RegisteredNode {
@@ -55,7 +55,7 @@ export interface RegisteredNode {
 /**
  * One graph operation as recorded by the registry.
  *
- * @since 0.2.0
+ * @since 0.1.0
  * @category models
  */
 export interface RegisteredOperation {
@@ -74,7 +74,7 @@ export interface RegisteredOperation {
  * schemas, response codecs, inspection, topology) consumes the registry
  * instead of re-walking raw AST.
  *
- * @since 0.2.0
+ * @since 0.1.0
  * @category models
  */
 export interface NodeRegistry {

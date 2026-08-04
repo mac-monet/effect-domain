@@ -224,7 +224,7 @@ export function concreteUnionMember(
  * `literals[i]` is member `i`'s literal for `key`, in the order the members
  * were passed.
  *
- * @since 0.2.0
+ * @since 0.1.0
  * @category models
  */
 export interface UnionDiscriminator {
@@ -252,7 +252,7 @@ export interface UnionDiscriminator {
  * a later key the walker would never consult. Keys sentinel-typed on only
  * some members are passed over (the walker falls through them per-value).
  *
- * @since 0.2.0
+ * @since 0.1.0
  * @category schema
  */
 export function unionDiscriminator(

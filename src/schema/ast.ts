@@ -180,7 +180,7 @@ export function wrapAstInArrays(ast: SchemaAST.AST, depth: number): SchemaAST.AS
  * Resolves the nearest `identifier` annotation on an AST, looking through
  * annotation chains.
  *
- * @since 0.2.0
+ * @since 0.1.0
  * @category schema
  */
 export function identifierOf(ast: SchemaAST.AST): string | undefined {
@@ -193,7 +193,7 @@ export function identifierOf(ast: SchemaAST.AST): string | undefined {
  * a union with more than one non-nullish member keeps the whole (unwrapped)
  * union as the core.
  *
- * @since 0.2.0
+ * @since 0.1.0
  * @category schema
  */
 export function splitNullability(ast: SchemaAST.AST): {

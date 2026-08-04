@@ -351,7 +351,7 @@ export interface DomainInstance<
    * must run between validation and execution, and `dispatch` when nothing
    * crosses a wire and live `Result` values are wanted.
    *
-   * @since 0.3.0
+   * @since 0.1.0
    */
   handleDispatch(
     config: DispatchRequest,
@@ -364,7 +364,7 @@ export interface DomainInstance<
    * shape `handleDispatch` produces — so subscription items and one-shot
    * responses share a single client decode path.
    *
-   * @since 0.3.0
+   * @since 0.1.0
    */
   handleSubscription(
     config: DispatchRequest,

@@ -244,7 +244,7 @@ type AnyFieldDefFor<Parent> = FieldDef<unknown, Parent, unknown, unknown>;
  * a function deriving the key from a node value. Consumers (registries, sync
  * engines, caches) use it to address entities of this node type.
  *
- * @since 0.2.0
+ * @since 0.1.0
  * @category models
  */
 export interface NodeOptions<T> {

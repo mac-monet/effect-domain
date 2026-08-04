@@ -1,8 +1,24 @@
 {
   "name": "effect-domain",
-  "version": "0.0.0",
-  "description": "A computation graph library for Effect schemas.",
+  "version": "0.1.0",
+  "description": "Domain action graph for Effect: define your model once, project it through REST, RPC, dynamic dispatch, and typed wire clients.",
+  "keywords": [
+    "domain",
+    "effect",
+    "graph",
+    "rpc",
+    "schema",
+    "typescript"
+  ],
+  "homepage": "https://github.com/mac-monet/effect-domain#readme",
+  "bugs": {
+    "url": "https://github.com/mac-monet/effect-domain/issues"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mac-monet/effect-domain.git"
+  },
   "files": [
     "dist"
   ],

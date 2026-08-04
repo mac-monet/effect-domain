@@ -40,7 +40,7 @@ export namespace Domain {
    * declaration becomes a compile error at the adapter boundary — domains
    * used purely via `execute()` never pay for schemas they don't need.
    *
-   * @since 0.3.0
+   * @since 0.1.0
    * @category models
    */
   export type MissingErrorSchemas<Ops extends Record<string, AnyOperationDef>> =
@@ -49,7 +49,7 @@ export namespace Domain {
    * The wire-level error type for an operation: the declared error schema's
    * `Type` when one exists, else the resolver's inferred failure type.
    *
-   * @since 0.3.0
+   * @since 0.1.0
    * @category models
    */
   export type DeclaredErrorType<Op extends AnyOperationDef> = DomainTypes.DeclaredErrorType<Op>;
@@ -59,7 +59,7 @@ export namespace Domain {
    * a compile error naming the operations. Apply at the adapter boundary,
    * never at `Domain.make`. See {@link Domain.wireClient}.
    *
-   * @since 0.3.0
+   * @since 0.1.0
    * @category models
    */
   export type RequireErrorSchemas<Ops extends Record<string, AnyOperationDef>> =
@@ -70,7 +70,7 @@ export namespace Domain {
    * `handleSubscription` on the server. `TE` is the transport's own failure
    * type and flows into the typed client's error channel.
    *
-   * @since 0.3.0
+   * @since 0.1.0
    * @category models
    */
   export type WireTransport<TE> = WireClientModule.WireTransport<TE>;
@@ -78,7 +78,7 @@ export namespace Domain {
    * A remote client with `domain.execute` / `domain.subscribe` parity,
    * produced by {@link Domain.wireClient}.
    *
-   * @since 0.3.0
+   * @since 0.1.0
    * @category models
    */
   export type WireClient<
@@ -90,7 +90,7 @@ export namespace Domain {
    * operation result plus per-execution artifacts (currently the walk's
    * read set).
    *
-   * @since 0.2.0
+   * @since 0.1.0
    * @category models
    */
   export type Execution<A> = DomainTypes.Execution<A>;
@@ -229,7 +229,7 @@ export namespace Domain {
    * Obtain one with {@link Domain.erase}; a `DomainInstance` whose services
    * are all provided also satisfies it structurally.
    *
-   * @since 0.2.0
+   * @since 0.1.0
    * @category models
    */
   export interface Erased {
@@ -268,7 +268,7 @@ export namespace Domain {
    * constraints), so adapters constrain on this and call {@link Domain.erase}
    * to obtain the runtime surface.
    *
-   * @since 0.2.0
+   * @since 0.1.0
    * @category models
    */
   export type Erasable<D> = {
@@ -291,7 +291,7 @@ export namespace Domain {
    * `graph.provide(layer)` first. This is the supported way for adapters to
    * drop the operation-level generics without casts.
    *
-   * @since 0.2.0
+   * @since 0.1.0
    * @category combinators
    */
   export function erase<D extends Erasable<D>>(domain: D): Erased {
@@ -345,7 +345,7 @@ export namespace Domain {
    * supplies decoding and typing; the transport supplies only "how to send".
    * See {@link WireClientModule.wireClient} for the full contract.
    *
-   * @since 0.3.0
+   * @since 0.1.0
    * @category constructors
    */
   export const wireClient = WireClientModule.wireClient;

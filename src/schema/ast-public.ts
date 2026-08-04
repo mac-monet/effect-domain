@@ -4,6 +4,6 @@
  * `unwrapType` memo — sharing it keeps adapter traversals convergent on
  * recursive schemas (see the memoization notes in `ast.ts`).
  *
- * @since 0.2.0
+ * @since 0.1.0
  */
 export { identifierOf, isNullishAst, splitNullability, unwrapType } from "./ast.ts";
