@@ -1,28 +1,49 @@
-# Publishes to npm when a version tag is pushed.
+# Publishes to npm when the version in package.json is bumped on main.
 #
-# Release flow: `vp exec bumpp` locally (bumps package.json, commits, tags
-# v<version>, pushes) — this workflow validates and publishes that tag.
+# Release flow: edit the version, commit, push. The workflow compares
+# package.json against the registry and, when it's new, validates,
+# publishes, and pushes the matching v<version> tag.
 # Auth is npm trusted publishing (OIDC): the effect-domain package on npm
 # trusts this repo + workflow file, so no token or secret is involved.
 name: Publish
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      id-token: write # npm --provenance
+      contents: write # push the release tag
+      id-token: write # npm trusted publishing (OIDC)
     steps:
       - uses: actions/checkout@v4
       - uses: voidzero-dev/setup-vp@v1
         with:
           cache: true
+      - name: Compare package.json against the registry
+        id: version
+        run: |
+          LOCAL=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view effect-domain version 2>/dev/null || echo "none")
+          echo "local=$LOCAL" >> "$GITHUB_OUTPUT"
+          if [ "$LOCAL" != "$PUBLISHED" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version $LOCAL is already published — nothing to do."
+          fi
       - run: vp install
+        if: steps.version.outputs.publish
       - run: vp check
+        if: steps.version.outputs.publish
       - run: vp test
+        if: steps.version.outputs.publish
       - run: npm publish
+        if: steps.version.outputs.publish
+      - name: Tag the release
+        if: steps.version.outputs.publish
+        run: |
+          git tag "v${{ steps.version.outputs.local }}"
+          git push origin "v${{ steps.version.outputs.local }}"
