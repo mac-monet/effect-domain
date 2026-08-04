@@ -2,8 +2,8 @@
 #
 # Release flow: `vp exec bumpp` locally (bumps package.json, commits, tags
 # v<version>, pushes) — this workflow validates and publishes that tag.
-# Requires the NPM_TOKEN repository secret (granular npm token with publish
-# access to effect-domain).
+# Auth is npm trusted publishing (OIDC): the effect-domain package on npm
+# trusts this repo + workflow file, so no token or secret is involved.
 name: Publish
 
 on:
@@ -25,8 +25,4 @@ jobs:
       - run: vp install
       - run: vp check
       - run: vp test
-      - run: |
-          echo "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" > ~/.npmrc
-          npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npm publish
