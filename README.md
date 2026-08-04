@@ -6,7 +6,7 @@ Define resources, computed fields, actions, subscriptions, selections, and runti
 
 The core idea is that the domain model is primary. Transports are projections of that model.
 
-> **Status:** pre-release. The API is settling but not yet frozen; the package is not yet published to npm. Requires `effect@^4.0.0-beta.101` (Effect v4).
+> **Status:** pre-release. The API is settling but not yet frozen. Install with `npm install effect-domain`; requires `effect@^4.0.0-beta.101` (Effect v4).
 
 ## Why
 
