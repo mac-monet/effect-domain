@@ -3,7 +3,16 @@ import { Result, Schema, SchemaTransformation } from "effect";
 const ResultDeclare = <A, E>() =>
   Schema.declare<Result.Result<A, E>>((u): u is Result.Result<A, E> => Result.isResult(u));
 
-type WireShape<A, E> =
+/**
+ * The encoded dispatch-Result envelope: the shape `handleDispatch` /
+ * `handleSubscription` produce and `ResultCodec` encodes to. Adapters that
+ * unwrap the envelope by hand (instead of decoding with `ResultCodec`)
+ * should type it with this instead of re-declaring the shape.
+ *
+ * @since 0.1.0
+ * @category models
+ */
+export type WireShape<A, E> =
   | { readonly _tag: "Success"; readonly success: A }
   | { readonly _tag: "Failure"; readonly failure: E };
 

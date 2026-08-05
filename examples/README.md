@@ -33,6 +33,11 @@ The other files expose or consume that graph without redefining the domain model
   `handleSubscription(...)`; the client is `Domain.wireClient(...)`, which
   recovers exact `domain.execute` / `domain.subscribe` typing over the wire.
   The file itself is only the RPC transport glue.
+- `mcp-dispatch.ts` — MCP server via Effect's built-in `McpServer`: every
+  non-stream operation becomes an MCP tool. Tool list from `inspect()`, tool
+  input schemas from each operation's args AST, execution through
+  `domain.handleDispatch(...)`. An optional `select` tool parameter lets
+  agents narrow their read set per call.
 - `http-stream.ts` — HTTP NDJSON streaming with `domain.bindSubscriptions(...)`.
 - `rpc-stream.ts` — Effect RPC streaming with `domain.bindSubscriptions(...)`.
 - `batching.ts` — relation-like field loading with `field({ key, resolve })`
