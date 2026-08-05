@@ -159,7 +159,7 @@ function nodeToResponseSchema(
       // a genuinely optional value) must be an optional key: struct encode
       // drops undefined-valued keys, so a required key could not decode its
       // own encode output.
-      const admitsUndefined = field.fieldAsts.some(admitsUndefinedAst);
+      const admitsUndefined = field.fieldAsts.some((fieldAst) => admitsUndefinedAst(fieldAst));
       fields[field.entry.outputKey] = admitsUndefined ? optionalCodec(built) : built;
     }
     const built = structCodec(fields);
@@ -175,10 +175,16 @@ function nodeToResponseSchema(
 // Undefined can reach a slot three ways: the union-variant sentinel, a
 // Void/Undefined-typed field, or a union with such a member
 // (Schema.UndefinedOr). All three must make the slot an optional key.
-function admitsUndefinedAst(ast: SchemaAST.AST): boolean {
+// `seen` guards recursive unions reachable through suspends, which
+// unwrapType canonicalizes back to the same AST.
+function admitsUndefinedAst(ast: SchemaAST.AST, seen?: Set<SchemaAST.AST>): boolean {
   const typeAst = unwrapType(ast);
   if (SchemaAST.isUndefined(typeAst) || SchemaAST.isVoid(typeAst)) return true;
-  return SchemaAST.isUnion(typeAst) && typeAst.types.some(admitsUndefinedAst);
+  if (!SchemaAST.isUnion(typeAst)) return false;
+  const visited = seen ?? new Set();
+  if (visited.has(typeAst)) return false;
+  visited.add(typeAst);
+  return typeAst.types.some((member) => admitsUndefinedAst(member, visited));
 }
 
 function fieldSuccessSchema(
