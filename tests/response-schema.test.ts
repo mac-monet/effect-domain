@@ -658,6 +658,96 @@ describe("Domain.responseSchema", () => {
     expect(decoded.success.motto).toBeUndefined();
   });
 
+  it("round-trips a sub-selected absent optionalKey node (undefined, not null)", async () => {
+    // Regression: the walker used to normalize the absent value to `null`,
+    // which the `object | undefined` wire slot rejects — encode died.
+    const Inner = node("ResponseOptionalInner", Schema.Struct({ bio: Schema.String }), {});
+    const Outer = node(
+      "ResponseOptionalOuter",
+      Schema.Struct({ id: Schema.String, profile: Schema.optionalKey(Inner) }),
+      {},
+    );
+    const g = Domain.make({
+      getUser: operation({
+        type: Outer,
+        error: Schema.Never,
+        resolve: () => Effect.succeed({ id: "1" }),
+      }),
+    });
+
+    const selection = { id: true, profile: { select: { bio: true } } } as const;
+    const encoded = await Effect.runPromise(
+      g.handleDispatch({ name: "getUser", select: selection }),
+    );
+    const decoded = decode(g.dispatchResultSchemaDynamic("getUser", selection), encoded) as {
+      _tag: string;
+      success: Record<string, unknown>;
+    };
+    expect(decoded._tag).toBe("Success");
+    expect(decoded.success.id).toBe("1");
+    expect(decoded.success.profile).toBeUndefined();
+  });
+
+  it("select: {} and true build different response codecs (no cache collision)", async () => {
+    const Inner = node(
+      "ResponseEmptySelectInner",
+      Schema.Struct({ x: Schema.String, y: Schema.String }),
+      {},
+    );
+    const Outer = node(
+      "ResponseEmptySelectOuter",
+      Schema.Struct({ id: Schema.String, inner: Inner }),
+      {},
+    );
+    const g = Domain.make({
+      get: operation({
+        type: Outer,
+        error: Schema.Never,
+        resolve: () => Effect.succeed({ id: "1", inner: { x: "a", y: "b" } }),
+      }),
+    });
+
+    // Build the `true` codec first, then dispatch with `select: {}` — a cache
+    // collision would encode the empty projection through the wrong codec.
+    const passThrough = { id: true, inner: true } as const;
+    const projected = { id: true, inner: { select: {} } } as const;
+
+    const encodedPass = await Effect.runPromise(
+      g.handleDispatch({ name: "get", select: passThrough }),
+    );
+    const encodedProj = await Effect.runPromise(
+      g.handleDispatch({ name: "get", select: projected }),
+    );
+
+    const decodedPass = decode(g.dispatchResultSchemaDynamic("get", passThrough), encodedPass) as {
+      success: Record<string, unknown>;
+    };
+    const decodedProj = decode(g.dispatchResultSchemaDynamic("get", projected), encodedProj) as {
+      success: Record<string, unknown>;
+    };
+
+    expect(decodedPass.success.inner).toEqual({ x: "a", y: "b" });
+    expect(decodedProj.success.inner).toEqual({});
+  });
+
+  it("rejects a selection whose field is sub-selectable on one variant but scalar on another", () => {
+    const Deep = node("ResponseConflictDeep", Schema.Struct({ d: Schema.String }), {});
+    const A = node(
+      "ResponseConflictA",
+      Schema.Struct({ _tag: Schema.Literal("a"), x: Schema.String }),
+      {},
+    );
+    const B = node("ResponseConflictB", Schema.Struct({ _tag: Schema.Literal("b"), x: Deep }), {});
+    const g = Domain.make({
+      get: operation({
+        type: Schema.Union([A, B]),
+        resolve: () => Effect.succeed({ _tag: "a" as const, x: "s" }),
+      }),
+    });
+
+    expect(() => g.selectionSchema("get")).toThrow(/conflicting scalar\/object\/array types/);
+  });
+
   it("property: executed valid selections round-trip the response codec", async () => {
     await fc.assert(
       fc.asyncProperty(validSelection, async (rawSelection) => {

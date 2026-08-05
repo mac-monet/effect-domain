@@ -1,7 +1,7 @@
 import { Effect, Schema, SchemaAST } from "effect";
 import { BatchFieldRequest } from "./define.ts";
 import type { NodeRegistry } from "./registry.ts";
-import { isRecord, unwrapType } from "./schema/ast.ts";
+import { isNullable, isRecord, unwrapType } from "./schema/ast.ts";
 import { concreteUnionMember } from "./schema/sentinels.ts";
 import { planRuntimeNode, planSelectedNode, type SelectedFieldPlan } from "./selection/plan.ts";
 import { DuplicateOutputKey, type Selection, UndefinedSelectionEntry } from "./selection/syntax.ts";
@@ -267,7 +267,13 @@ function resolveValue<R>(
   ctx: WalkContext,
 ): Effect.Effect<unknown, unknown, R> {
   if (value == null) {
-    return Effect.succeed(null);
+    // Absence is `null` — except an undefined value whose declared type is
+    // not nullable (an absent optionalKey): that stays `undefined` so the
+    // optional wire key can drop it, mirroring MissingOnVariant. A nullable
+    // type's own undefined (UndefinedOr) still normalizes to `null`, which
+    // its wire slot admits.
+    const stayUndefined = value === undefined && ast !== undefined && !isNullable(ast);
+    return Effect.succeed(stayUndefined ? undefined : null);
   }
 
   const typeAst = ast ? unwrapType(ast) : undefined;

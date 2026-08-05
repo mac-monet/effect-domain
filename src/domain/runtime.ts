@@ -1,6 +1,6 @@
 import { Effect, type Layer, Result, Schema, Stream } from "effect";
 import type { AnyOperationDef } from "../define.ts";
-import type { DynamicCodec } from "../schema/codec.ts";
+import { type DynamicCodec, unsafeCoerceCodec } from "../schema/codec.ts";
 import {
   argsSchemaFor,
   type BoundaryDecoded,
@@ -274,9 +274,9 @@ function makeDomainWithLayers<
   }
 
   // The total wire codec behind dispatchResultSchemaDynamic, handleDispatch,
-  // and handleSubscription. Unknown names and unbuildable selections fall back
-  // to the gateway codec, which decodes exactly what the server can produce
-  // for them (such dispatches fail at the boundary with a GatewayError).
+  // and handleSubscription. Unknown names fall back to the gateway codec,
+  // which decodes exactly what the server can produce for them (such
+  // dispatches fail at the boundary with a GatewayError).
   function dynamicResultCodec(name: string, selection: Selection | undefined): DynamicCodec {
     const op = Object.hasOwn(ops, name) ? ops[name]! : undefined;
     if (op === undefined) return gatewayResultCodec();
@@ -284,7 +284,11 @@ function makeDomainWithLayers<
     try {
       success = rootToResponseSchema(registry, op.type.ast, selection);
     } catch {
-      return gatewayResultCodec();
+      // A known operation whose selection can't build a response codec: the
+      // failure side must still round-trip (the boundary rejects such
+      // selections as GatewayErrors), but a success produced despite it must
+      // not silently cross the wire un-encoded — Never dies at encode time.
+      success = unsafeCoerceCodec(Schema.Never);
     }
     const failure = Schema.Union([
       GatewayError,

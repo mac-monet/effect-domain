@@ -63,8 +63,11 @@ function canonicalizeFieldItem(item: unknown): true | Record<string, unknown> {
   if (it.alias !== undefined) out.alias = it.alias;
   if (it.args !== undefined) out.args = sortKeysDeep(it.args);
   if (it.select !== undefined) {
-    const sub = canonicalizeSelection(it.select);
-    if (sub !== undefined) out.select = sub;
+    // An empty select block is NOT equivalent to `true`: `{ select: {} }`
+    // projects the value to `{}` while `true` passes it through raw. Keep it
+    // distinct so invocation keys and response-codec cache keys don't collide
+    // across selections that produce different data.
+    out.select = canonicalizeSelection(it.select) ?? {};
   }
   return Object.keys(out).length === 0 ? true : out;
 }

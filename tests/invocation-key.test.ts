@@ -154,10 +154,13 @@ describe("invocationKey — canonicalization", () => {
     expect(k1).toBe(k2);
   });
 
-  it("drops empty nested select: {} blocks", () => {
+  it("keeps nested select: {} distinct from true (they produce different data)", () => {
+    // `{ select: {} }` projects the value to `{}`; `true` passes it through
+    // raw — same key would alias two different results in idempotency stores
+    // and the response-codec cache.
     const k1 = invocationKey({ name: "x", select: { profile: { select: {} } } });
     const k2 = invocationKey({ name: "x", select: { profile: true } });
-    expect(k1).toBe(k2);
+    expect(k1).not.toBe(k2);
   });
 
   it("does NOT collapse args: {} and undefined", () => {
@@ -313,9 +316,9 @@ describe("canonicalizeSelection", () => {
     expect(canonicalizeSelection("not-an-object")).toBeUndefined();
   });
 
-  it("collapses nested { select: {} } to true", () => {
+  it("preserves nested { select: {} } (not equivalent to true)", () => {
     const out = canonicalizeSelection({ profile: { select: {} } });
-    expect(out).toEqual({ profile: true });
+    expect(out).toEqual({ profile: { select: {} } });
   });
 
   it("property: canonicalization is idempotent", () => {
@@ -329,10 +332,11 @@ describe("canonicalizeSelection", () => {
   });
 });
 
-// Three surface forms that canonicalize identically to `true`; mixing them
+// Two surface forms that canonicalize identically to `true`; mixing them
 // freely across two/three renderings of the same field set yields equivalent
-// selections by construction.
-const equivalentLeafForms = fc.constantFrom<unknown>(true, [true], { select: {} });
+// selections by construction. (`{ select: {} }` is deliberately NOT
+// equivalent: it projects to `{}` where `true` passes the value through.)
+const equivalentLeafForms = fc.constantFrom<unknown>(true, [true]);
 const selectionFieldNames = fc.constantFrom("id", "firstName", "lastName", "fullName", "posts");
 
 const equivalentSelectionTriple = fc

@@ -137,7 +137,7 @@ function collectVariantFields(
   registry: NodeRegistry,
   variantAst: SchemaAST.Objects,
   out: Map<string, Set<DynamicCodec>>,
-  childTypesByName: Map<string, Set<SchemaAST.AST>> | undefined,
+  childTypesByName: Map<string, Set<SchemaAST.AST | "scalar">> | undefined,
 ): void {
   const fieldDefs = registry.fieldDefsFor(variantAst);
   const computedNames = new Set<string>(fieldDefs ? Object.keys(fieldDefs) : []);
@@ -154,14 +154,12 @@ function collectVariantFields(
     set.add(schema);
     if (childTypesByName) {
       const projection = fieldSelectionProjection(ps.type);
-      if (projection._tag === "Nested") {
-        let cset = childTypesByName.get(ps.name);
-        if (!cset) {
-          cset = new Set();
-          childTypesByName.set(ps.name, cset);
-        }
-        cset.add(projection.target);
+      let cset = childTypesByName.get(ps.name);
+      if (!cset) {
+        cset = new Set();
+        childTypesByName.set(ps.name, cset);
       }
+      cset.add(projection._tag === "Nested" ? projection.target : "scalar");
     }
   }
 
@@ -183,14 +181,12 @@ function collectVariantFields(
       set.add(schema);
       if (childTypesByName) {
         const projection = fieldSelectionProjection(def.type.ast);
-        if (projection._tag === "Nested") {
-          let cset = childTypesByName.get(name);
-          if (!cset) {
-            cset = new Set();
-            childTypesByName.set(name, cset);
-          }
-          cset.add(projection.target);
+        let cset = childTypesByName.get(name);
+        if (!cset) {
+          cset = new Set();
+          childTypesByName.set(name, cset);
         }
+        cset.add(projection._tag === "Nested" ? projection.target : "scalar");
       }
     }
   }
@@ -269,7 +265,11 @@ function buildSelectionSchema(registry: NodeRegistry, typeAst: SchemaAST.AST): D
       );
     }
     const fieldsByName = new Map<string, Set<DynamicCodec>>();
-    const childTypesByName = new Map<string, Set<SchemaAST.AST>>();
+    // Tracks each field's selection projection per variant — including a
+    // "scalar" marker, so a field that is sub-selectable on one variant but
+    // scalar on another is rejected as ambiguous rather than accepted at the
+    // boundary and then rejected (or worse) by the response codec.
+    const childTypesByName = new Map<string, Set<SchemaAST.AST | "scalar">>();
     for (const variant of typeAst.types) {
       const variantType = unwrapSuspend(variant);
       if (!SchemaAST.isObjects(variantType)) continue;
@@ -278,7 +278,7 @@ function buildSelectionSchema(registry: NodeRegistry, typeAst: SchemaAST.AST): D
     for (const [name, types] of childTypesByName) {
       if (types.size > 1) {
         throw new Error(
-          `selectionSchema: union has field "${name}" with conflicting object/array types across variants — selection sub-shapes would be ambiguous at the boundary. Rename the field on one variant or align the underlying type.`,
+          `selectionSchema: union has field "${name}" with conflicting scalar/object/array types across variants — selection sub-shapes would be ambiguous at the boundary. Rename the field on one variant or align the underlying type.`,
         );
       }
     }
