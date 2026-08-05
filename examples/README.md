@@ -49,6 +49,13 @@ The other files expose or consume that graph without redefining the domain model
 - `live-queries.ts` — read-set-driven live queries: `dispatch(..., { reads:
 true })` records which entities each query touched, and `invalidate(entity)`
   re-runs exactly the dependent queries, emitting events only on change.
+- `foldkit-app/` — a complete browser frontend (Foldkit, Elm-architecture)
+  over the dynamic gateway. The server is one POST /rpc route through
+  `domain.handleDispatch(...)`; the client is `Domain.wireClient(...)` with a
+  fetch transport, so every screen picks its own selection and declared
+  errors (UserNotFound) arrive typed. `dataForRoute` maps each route to its
+  dispatches — the seam a server render would reuse. Run `bun run server`
+  and `bun run dev` from inside the directory.
 
 The fixed HTTP/RPC examples use `domain.bind(...)`, `domain.argsSchema(...)`, and
 `domain.responseSchema(...)` when the interface owns the operation and selection.
