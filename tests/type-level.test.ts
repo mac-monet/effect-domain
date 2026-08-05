@@ -1,7 +1,8 @@
-import { Effect, Option, Result, Schema, Stream } from "effect";
+import { Context, Effect, Option, Result, Schema, Stream } from "effect";
 import { describe, expectTypeOf, it } from "vite-plus/test";
 import { Domain, field, node, operation, subscription } from "../src/index.ts";
 import type { SelectionFor } from "../src/index.ts";
+import type { AllR, NodeE, NodeR } from "../src/domain/type-level.ts";
 
 const typecheckOnly: boolean = false;
 
@@ -182,6 +183,61 @@ describe("Unit 7: typed selections and NodeType", () => {
     expectTypeOf<R>().toEqualTypeOf<{
       profile: Result.Result<Option.None<never> | { bio: Result.Result<string, unknown> }, unknown>;
     }>();
+  });
+
+  it("field requirements and errors reach the type level through NodeMeta", () => {
+    class Clock extends Context.Service<Clock, { readonly now: number }>()("Clock") {}
+    class Fmt extends Context.Service<Fmt, { readonly fmt: string }>()("Fmt") {}
+    class BioMissing extends Schema.TaggedErrorClass<BioMissing>("BioMissing")("BioMissing", {}) {}
+
+    const Profile = node("Profile", Schema.Struct({ bio: Schema.String }), (f) => ({
+      formatted: f.field({
+        type: Schema.String,
+        resolve: ({ parent }) =>
+          Effect.gen(function* () {
+            const { fmt } = yield* Fmt;
+            if (parent.bio === "") return yield* new BioMissing();
+            return `${fmt}${parent.bio}`;
+          }),
+      }),
+    }));
+
+    const TimedUser = node("TimedUser", Schema.Struct({ id: Schema.String }), (f) => ({
+      stampedAt: f.field({
+        type: Schema.Number,
+        resolve: () =>
+          Effect.gen(function* () {
+            const { now } = yield* Clock;
+            return now;
+          }),
+      }),
+      profiles: f.field({
+        type: Schema.Array(Profile),
+        resolve: () => Effect.succeed([]),
+      }),
+    }));
+
+    type T = Schema.Schema.Type<typeof TimedUser>;
+    // Own field R plus nested node field R, through the array.
+    expectTypeOf<NodeR<T>>().toEqualTypeOf<Clock | Fmt>();
+    // NodeE mirrors it for errors; not yet wired into any signature.
+    expectTypeOf<NodeE<T>>().toEqualTypeOf<BioMissing>();
+    // The phantom key is a symbol: selection syntax never offers it.
+    expectTypeOf<keyof SelectionFor<T>>().toEqualTypeOf<"id" | "stampedAt" | "profiles">();
+
+    // The undercount fix: field R surfaces in execute R and AllR even though
+    // the operation resolver itself requires nothing.
+    const g = Domain.make({
+      getTimed: operation({
+        type: TimedUser,
+        resolve: () => Effect.succeed({ id: "1" }),
+      }),
+    });
+    type GR = AllR<(typeof g)["operations"]>;
+    expectTypeOf<GR>().toEqualTypeOf<Clock | Fmt>();
+    const eff = g.execute("getTimed", { select: { stampedAt: true } });
+    type ER = typeof eff extends Effect.Effect<any, any, infer R> ? R : never;
+    expectTypeOf<ER>().toEqualTypeOf<Clock | Fmt>();
   });
 
   it("ResultOf preserves null as-is for scalar selections", () => {

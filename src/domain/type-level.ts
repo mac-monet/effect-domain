@@ -1,5 +1,5 @@
 import type { Effect, Option, Result, Schema, Stream } from "effect";
-import type { AnyOperationDef, OperationDefinition } from "../define.ts";
+import type { AnyOperationDef, NodeMeta, OperationDefinition } from "../define.ts";
 import type { HasArrayMember, RootSelectionFor, UnionKeys } from "../selection/syntax.ts";
 import type { ReadSet } from "../walk.ts";
 
@@ -72,11 +72,58 @@ type ExtractStreamed<Op> =
     ? Streamed
     : boolean;
 
+// A hand-typed FieldDef (or erased record) can leave the phantom at its
+// `unknown` default; treat that as "declares nothing" rather than poisoning
+// the union.
+type KnownOrNever<X> = unknown extends X ? never : X;
+type FieldE<F> = F extends { readonly _error?: () => infer E } ? KnownOrNever<E> : never;
+type FieldR<F> = F extends { readonly _requirements?: () => infer R } ? KnownOrNever<R> : never;
+type UnwrapElement<T> = [NonNullable<T>] extends [readonly (infer E)[]]
+  ? NonNullable<E>
+  : NonNullable<T>;
+
+type NodeFieldDefs<T> = T extends object
+  ? T extends { readonly [NodeMeta]?: infer M }
+    ? M extends { readonly fields: infer C }
+      ? C
+      : never
+    : never
+  : never;
+
+/**
+ * The requirement union of every computed field reachable from a node type:
+ * its own fields plus, recursively, the fields of node-typed values under any
+ * key (data or computed, through arrays and nullables). This is what `node()`
+ * erases from the value surface and the {@link NodeMeta} phantom preserves.
+ */
+export type NodeR<T> = [NodeFieldDefs<T>] extends [never]
+  ? never
+  :
+      | { [K in keyof NodeFieldDefs<T>]: FieldR<NodeFieldDefs<T>[K]> }[keyof NodeFieldDefs<T>]
+      | { [K in keyof T & string]: NodeR<UnwrapElement<T[K]>> }[keyof T & string];
+
+/** Selection-independent field error union, mirror of {@link NodeR}. Not yet
+ * part of any signature: the walker does not fail operations on field errors
+ * today, so surfacing this in `E` would claim failures that cannot happen.
+ * The plain-data walker rework wires it in. */
+export type NodeE<T> = [NodeFieldDefs<T>] extends [never]
+  ? never
+  :
+      | { [K in keyof NodeFieldDefs<T>]: FieldE<NodeFieldDefs<T>[K]> }[keyof NodeFieldDefs<T>]
+      | { [K in keyof T & string]: NodeE<UnwrapElement<T[K]>> }[keyof T & string];
+
+/**
+ * The full requirement type of an operation: the resolver's `R` plus the
+ * requirements of every computed field reachable from its root type — the
+ * walker runs those resolvers, so their services are needed at execute time.
+ */
+export type OperationR<Op> = ExtractR<Op> | NodeR<UnwrapElement<ExtractType<Op>>>;
+
 export type AllE<Ops extends Record<string, AnyOperationDef>> = {
   [K in keyof Ops]: ExtractE<Ops[K]>;
 }[keyof Ops];
 export type AllR<Ops extends Record<string, AnyOperationDef>> = {
-  [K in keyof Ops]: ExtractR<Ops[K]>;
+  [K in keyof Ops]: OperationR<Ops[K]>;
 }[keyof Ops];
 
 type OperationName<Ops extends Record<string, AnyOperationDef>> = Extract<keyof Ops, string>;
@@ -135,14 +182,14 @@ type BindMethod<Op, S, Provided, ProvidedE, ProvidedR> = [ExtractArgs<Op>] exten
   ? () => Effect.Effect<
       DomainRootResultOf<ExtractType<Op>, S>,
       ExtractE<Op> | ProvidedE,
-      Exclude<ExtractR<Op>, Provided> | ProvidedR
+      Exclude<OperationR<Op>, Provided> | ProvidedR
     >
   : (
       args: ExtractArgs<Op>,
     ) => Effect.Effect<
       DomainRootResultOf<ExtractType<Op>, S>,
       ExtractE<Op> | ProvidedE,
-      Exclude<ExtractR<Op>, Provided> | ProvidedR
+      Exclude<OperationR<Op>, Provided> | ProvidedR
     >;
 
 type BindSubscriptionMethod<Op, S, Provided, ProvidedE, ProvidedR> = [ExtractArgs<Op>] extends [
@@ -151,14 +198,14 @@ type BindSubscriptionMethod<Op, S, Provided, ProvidedE, ProvidedR> = [ExtractArg
   ? () => Stream.Stream<
       DomainRootResultOf<ExtractType<Op>, S>,
       ExtractE<Op> | ProvidedE,
-      Exclude<ExtractR<Op>, Provided> | ProvidedR
+      Exclude<OperationR<Op>, Provided> | ProvidedR
     >
   : (
       args: ExtractArgs<Op>,
     ) => Stream.Stream<
       DomainRootResultOf<ExtractType<Op>, S>,
       ExtractE<Op> | ProvidedE,
-      Exclude<ExtractR<Op>, Provided> | ProvidedR
+      Exclude<OperationR<Op>, Provided> | ProvidedR
     >;
 
 export type BoundOperations<

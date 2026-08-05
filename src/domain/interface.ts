@@ -77,7 +77,7 @@ export interface DomainInstance<
   ): Effect.Effect<
     DomainTypes.Execution<DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>>,
     DomainTypes.ExtractE<Ops[K]> | ProvidedE,
-    Exclude<DomainTypes.ExtractR<Ops[K]>, Provided> | ProvidedR
+    Exclude<DomainTypes.OperationR<Ops[K]>, Provided> | ProvidedR
   >;
   execute<
     K extends DomainTypes.OperationNamesByStream<Ops, false>,
@@ -92,7 +92,7 @@ export interface DomainInstance<
   ): Effect.Effect<
     DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>,
     DomainTypes.ExtractE<Ops[K]> | ProvidedE,
-    Exclude<DomainTypes.ExtractR<Ops[K]>, Provided> | ProvidedR
+    Exclude<DomainTypes.OperationR<Ops[K]>, Provided> | ProvidedR
   >;
   subscribe<
     K extends DomainTypes.OperationNamesByStream<Ops, true>,
@@ -107,7 +107,7 @@ export interface DomainInstance<
   ): Stream.Stream<
     DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>,
     DomainTypes.ExtractE<Ops[K]> | ProvidedE,
-    Exclude<DomainTypes.ExtractR<Ops[K]>, Provided> | ProvidedR
+    Exclude<DomainTypes.OperationR<Ops[K]>, Provided> | ProvidedR
   >;
   inspect(): Inspection;
   /**

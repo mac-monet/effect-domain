@@ -59,9 +59,24 @@ export interface AnyFieldDef {
 type ExtractFieldType<F> = F extends { readonly type: Schema.Schema<infer T> } ? T : never;
 
 /**
+ * Phantom key carrying a node's computed-field definitions on the node's
+ * `Type`. Never present at runtime — a symbol key, so `keyof T & string`
+ * (selection syntax, identity options) never sees it. Type-level consumers
+ * ({@link NodeR}) read it to recover per-field error/requirement types that
+ * `node()` would otherwise erase.
+ *
+ * @since 0.2.0
+ * @category models
+ */
+export const NodeMeta: unique symbol = Symbol.for("effect-domain/NodeMeta");
+export type NodeMeta = typeof NodeMeta;
+
+/**
  * The `Type` of a schema returned by {@link node}: the struct's data fields
  * merged with the output types of its computed fields. Computed fields are
- * optional in the type — they exist on the value only when selected.
+ * optional in the type — they exist on the value only when selected. The
+ * {@link NodeMeta} phantom carries the field-def record for type-level
+ * error/requirement extraction.
  *
  * @since 0.1.0
  * @category models
@@ -71,6 +86,8 @@ export type NodeType<
   Computed extends Record<string, { readonly type: Schema.Schema<any> }>,
 > = Data & {
   readonly [K in keyof Computed]?: ExtractFieldType<Computed[K]>;
+} & {
+  readonly [NodeMeta]?: { readonly fields: Computed };
 };
 
 /**
