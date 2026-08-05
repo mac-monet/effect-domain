@@ -623,6 +623,41 @@ describe("Domain.responseSchema", () => {
     expect(decoded.success.bark).toBeUndefined();
   });
 
+  it("round-trips undefined-admitting field types (UndefinedOr, optionalKey)", async () => {
+    // Regression: only the union-variant Undefined sentinel used to make a
+    // slot optional; a field *typed* to admit undefined also has its key
+    // dropped by struct encode and must decode as absent.
+    const Profile = node(
+      "ResponseOptionalProfile",
+      Schema.Struct({
+        id: Schema.String,
+        nickname: Schema.UndefinedOr(Schema.String),
+        motto: Schema.optionalKey(Schema.String),
+      }),
+      {},
+    );
+    const g = Domain.make({
+      getProfile: operation({
+        type: Profile,
+        error: Schema.Never,
+        resolve: () => Effect.succeed({ id: "1", nickname: undefined }),
+      }),
+    });
+
+    const selection = { id: true, nickname: true, motto: true } as const;
+    const encoded = await Effect.runPromise(
+      g.handleDispatch({ name: "getProfile", select: selection }),
+    );
+    const decoded = decode(g.dispatchResultSchemaDynamic("getProfile", selection), encoded) as {
+      _tag: string;
+      success: Record<string, unknown>;
+    };
+    expect(decoded._tag).toBe("Success");
+    expect(decoded.success.id).toBe("1");
+    expect(decoded.success.nickname).toBeUndefined();
+    expect(decoded.success.motto).toBeUndefined();
+  });
+
   it("property: executed valid selections round-trip the response codec", async () => {
     await fc.assert(
       fc.asyncProperty(validSelection, async (rawSelection) => {

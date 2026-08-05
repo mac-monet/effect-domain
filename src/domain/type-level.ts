@@ -405,12 +405,16 @@ type SelectedFieldValue<T, K extends PropertyKey> = T extends unknown
   : never;
 
 // Projection results are plain data: selected scalars keep their raw types,
-// sub-selected objects narrow to their selection, and nullish values in
+// sub-selected objects narrow to their selection, and nullish *values* in
 // sub-selected positions normalize to `null` (the walker's plain-data rule).
+// `undefined` here is only the missing-on-variant marker (value-level
+// undefined is excluded by SelectedFieldValue), which the walker emits as
+// `undefined` untouched — so it survives as `undefined`, not `null`.
 type SelectedField<T, Sel> = Sel extends { readonly select: infer Sub }
-  ? HasNullish<T> extends true
-    ? null | SelectedSub<NonNullish<T>, Sub>
-    : SelectedSub<NonNullish<T>, Sub>
+  ?
+      | (undefined extends T ? undefined : never)
+      | (null extends T ? null : never)
+      | SelectedSub<NonNullish<T>, Sub>
   : T;
 
 type SelectedSub<T, Sub> = [T] extends [readonly (infer E)[]]

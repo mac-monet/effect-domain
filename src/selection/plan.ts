@@ -171,7 +171,14 @@ function lookupSelectedField<R>(
   if (fieldDef) return { fieldAsts: [fieldDef.type.ast], fieldDef };
 
   for (const ps of typeAst.propertySignatures) {
-    if (ps.name === fieldName) return { fieldAsts: [ps.type] };
+    if (ps.name === fieldName) {
+      // An optional key admits absence (`obj[fieldName]` is `undefined`);
+      // surface that as an Undefined member so the response codec makes the
+      // wire slot an optional key instead of a required one.
+      return SchemaAST.isOptional(ps.type)
+        ? { fieldAsts: [ps.type, Schema.Undefined.ast] }
+        : { fieldAsts: [ps.type] };
+    }
   }
   return { fieldAsts: [] };
 }

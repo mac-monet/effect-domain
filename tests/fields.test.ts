@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Cause, Effect, Exit, Result, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Domain, field, node, operation } from "../src/index.ts";
 import type { Selection } from "../src/index.ts";
@@ -102,7 +102,7 @@ describe("Unit 4: strict field failures and field args", () => {
     expect(result.greeting).toBe("Hello, Alice (42)!");
   });
 
-  it("invalid field args fail the operation", async () => {
+  it("invalid field args in-process die as caller misuse", async () => {
     const WithArgs = node("WithArgs", Schema.Struct({ id: Schema.String }), {
       greeting: field({
         type: Schema.String,
@@ -126,8 +126,37 @@ describe("Unit 4: strict field failures and field args", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(Cause.hasFails(exit.cause)).toBe(true);
+      expect(Cause.hasDies(exit.cause)).toBe(true);
+      expect(Cause.hasFails(exit.cause)).toBe(false);
     }
+  });
+
+  it("transforming args codecs decode exactly once through dispatch", async () => {
+    const WithArgs = node("TransformArgs", Schema.Struct({ id: Schema.String }), {
+      double: field({
+        type: Schema.Number,
+        args: Schema.Struct({ n: Schema.FiniteFromString }),
+        resolve: ({ args }) => Effect.succeed(args.n * 2),
+      }),
+    });
+
+    const g = Domain.make({
+      get: operation({
+        type: WithArgs,
+        error: Schema.Never,
+        resolve: () => Effect.succeed({ id: "1" }),
+      }),
+    });
+
+    const result = await Effect.runPromise(
+      g.dispatch({ name: "get", select: { double: { args: { n: "21" } } } }),
+    );
+    expect(Result.getOrThrow(result)).toEqual({ double: 42 });
+
+    const bad = await Effect.runPromise(
+      g.dispatch({ name: "get", select: { double: { args: { n: "nope" } } } }),
+    );
+    expect(Result.isFailure(bad) && bad.failure._tag).toBe("SelectionParseError");
   });
 
   it("alias renames the output key", async () => {

@@ -157,6 +157,15 @@ describe("Unit 7: typed selections and NodeType", () => {
     expectTypeOf<R>().toEqualTypeOf<{ profile: null | { bio: string } }>();
   });
 
+  it("SelectedOf models missing-on-variant sub-selected fields as undefined", () => {
+    // The walker emits `undefined` for a selected field absent from the
+    // matched union variant — distinct from nullish values, which it
+    // normalizes to `null`.
+    type T = { _tag: "cat" } | { _tag: "dog"; house: { size: number } };
+    type R = Domain.SelectedOf<T, { house: { select: { size: true } } }>;
+    expectTypeOf<R>().toEqualTypeOf<{ house: undefined | { size: number } }>();
+  });
+
   it("Node extractors see union variants, anonymous-struct roots, and declared field errors", () => {
     class CatSvc extends Context.Service<CatSvc, { readonly c: number }>()("CatSvc") {}
     class DogErr extends Schema.TaggedErrorClass<DogErr>("DogErr")("DogErr", {}) {}

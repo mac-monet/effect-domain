@@ -317,6 +317,12 @@ export function decodeBoundary(
       );
     }
 
+    // The selection schema decode is validation only — it runs the full
+    // field-args decode so malformed args are a typed boundary error (4xx),
+    // but the *raw* selection is what flows on. The walker performs the one
+    // authoritative args decode; forwarding the decoded selection would hand
+    // it type-side args and a second decode, which fails for transforming
+    // args codecs.
     const decodedSelect: Effect.Effect<Selection | undefined, SelectionParseError> = Effect.flatMap(
       Effect.try({
         try: () => selectionSchemaFor(config.name),
@@ -324,7 +330,10 @@ export function decodeBoundary(
       }),
       (selectionSchema) =>
         Effect.mapError(
-          Schema.decodeUnknownEffect(selectionSchema)(config.select),
+          Effect.as(
+            Schema.decodeUnknownEffect(selectionSchema)(config.select),
+            config.select as Selection | undefined,
+          ),
           (err) => new SelectionParseError({ operation: config.name, cause: err }),
         ),
     );
