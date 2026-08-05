@@ -1,17 +1,18 @@
-import { Effect, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { RpcTest } from "effect/unstable/rpc";
 import { describe, expect, it } from "vite-plus/test";
 import { domain } from "../examples/domain.ts";
 import { webHandler } from "../examples/http-dispatch.ts";
 import { rpc, RpcLive } from "../examples/rpc-dispatch.ts";
 
-// The HTTP example encodes every response with dispatchResultSchemaDynamic,
-// so the body is the schema wire shape at every level:
-// { _tag: "Success", success } | { _tag: "Failure", failure }.
+// The HTTP example encodes every response with dispatchResultSchemaDynamic.
+// Only the operation-level envelope is wrapped:
+// { _tag: "Success", success } | { _tag: "Failure", failure } — the success
+// payload itself is the plain selected data tree.
 type WireResult<A> =
   | { readonly _tag: "Success"; readonly success: A }
   | { readonly _tag: "Failure"; readonly failure: unknown };
-type UserWireResult = Record<string, WireResult<string>>;
+type UserWire = Record<string, string>;
 const ok = <A>(r: WireResult<A>): A => {
   if (r._tag === "Failure")
     throw new Error(`Expected Success, got Failure: ${JSON.stringify(r.failure)}`);
@@ -41,14 +42,12 @@ describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
     );
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as WireResult<
-      UserWireResult & { readonly profile: WireResult<UserWireResult> }
-    >;
+    const body = (await response.json()) as WireResult<UserWire & { readonly profile: UserWire }>;
     const user = ok(body);
-    expect(ok(user.id)).toBe("1");
-    expect(ok(user.fullName)).toBe("Alice Anderson");
-    expect(ok(user.greeting)).toBe("Dr. Alice Anderson");
-    expect(ok(ok(user.profile).location)).toBe("Taipei");
+    expect(user.id).toBe("1");
+    expect(user.fullName).toBe("Alice Anderson");
+    expect(user.greeting).toBe("Dr. Alice Anderson");
+    expect(user.profile.location).toBe("Taipei");
   });
 
   it("POST /listUsers walks each row's selected fields", async () => {
@@ -62,8 +61,8 @@ describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
     );
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as WireResult<ReadonlyArray<UserWireResult>>;
-    expect(ok(body).map((row) => ok(row.fullName))).toEqual(["Alice Anderson", "Bob Brown"]);
+    const body = (await response.json()) as WireResult<ReadonlyArray<UserWire>>;
+    expect(ok(body).map((row) => row.fullName)).toEqual(["Alice Anderson", "Bob Brown"]);
   });
 
   it("POST /createUser persists and returns the new row", async () => {
@@ -77,8 +76,8 @@ describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
       }),
     );
 
-    const body = (await response.json()) as WireResult<UserWireResult>;
-    expect(ok(ok(body).fullName)).toBe("Charlie Carter");
+    const body = (await response.json()) as WireResult<UserWire>;
+    expect(ok(body).fullName).toBe("Charlie Carter");
   });
 
   it("POST /getUser returns 400 for invalid args", async () => {
@@ -152,8 +151,7 @@ describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
   });
 });
 
-// In-process RPC: the handler returns live Result values. RpcTest skips
-// serialization, so we keep the prototypes and use Result.getOrThrow directly.
+// In-process RPC: the handler returns plain projected data trees.
 describe("Examples: RPC dynamic gateway via domain.dispatch", () => {
   const program = Effect.gen(function* () {
     const client = rpc.clientFrom(yield* RpcTest.makeClient(rpc.group));
@@ -196,13 +194,12 @@ describe("Examples: RPC dynamic gateway via domain.dispatch", () => {
       >,
     );
 
-    expect(Result.getOrThrow(user.fullName)).toBe("Alice Anderson");
-    expect(Result.getOrThrow(user.greeting)).toBe("Dr. Alice Anderson");
-    const profile = Result.getOrThrow(user.profile);
-    expect(Result.getOrThrow(profile.location)).toBe("Taipei");
+    expect(user.fullName).toBe("Alice Anderson");
+    expect(user.greeting).toBe("Dr. Alice Anderson");
+    expect(user.profile.location).toBe("Taipei");
 
-    expect(list.map((r) => Result.getOrThrow(r.firstName))).toEqual(["Alice", "Bob"]);
+    expect(list.map((r) => r.firstName)).toEqual(["Alice", "Bob"]);
 
-    expect(Result.getOrThrow(created.fullName)).toBe("Dana Davis");
+    expect(created.fullName).toBe("Dana Davis");
   });
 });

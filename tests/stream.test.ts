@@ -1,4 +1,4 @@
-import { Effect, Result, Schema, Stream } from "effect";
+import { Effect, Schema, Stream } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Domain, field, node, subscription } from "../src/index.ts";
 
@@ -27,12 +27,12 @@ describe("Unit 6: stream operations", () => {
     );
 
     expect(results).toHaveLength(3);
-    expect(Result.getOrThrow(results[0].value)).toBe(1);
-    expect(Result.getOrThrow(results[0].doubled)).toBe(2);
-    expect(Result.getOrThrow(results[1].value)).toBe(2);
-    expect(Result.getOrThrow(results[1].doubled)).toBe(4);
-    expect(Result.getOrThrow(results[2].value)).toBe(3);
-    expect(Result.getOrThrow(results[2].doubled)).toBe(6);
+    expect(results[0].value).toBe(1);
+    expect(results[0].doubled).toBe(2);
+    expect(results[1].value).toBe(2);
+    expect(results[1].doubled).toBe(4);
+    expect(results[2].value).toBe(3);
+    expect(results[2].doubled).toBe(6);
   });
 
   it("subscription with args passes args to resolver", async () => {
@@ -56,7 +56,7 @@ describe("Unit 6: stream operations", () => {
     );
 
     expect(results).toHaveLength(1);
-    expect(Result.getOrThrow(results[0].text)).toBe("msg from general");
+    expect(results[0].text).toBe("msg from general");
   });
 
   it("stream error mid-emission propagates to consumer", async () => {

@@ -1,4 +1,4 @@
-import { Effect, Result } from "effect";
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { domain, makeReposLive, type BatchingStats } from "../examples/batching.ts";
 
@@ -20,7 +20,7 @@ describe("Examples: Effect request batching for N+1", () => {
     expect(stats.postBatchCalls).toBe(1);
     expect(stats.lastAuthorIds).toEqual(["u1", "u2", "u3"]);
 
-    const firstPosts = Result.getOrThrow(result[0]!.posts);
-    expect(Result.getOrThrow(firstPosts[0]!.title)).toBe("Post by Alice");
+    const firstPosts = result[0]!.posts;
+    expect(firstPosts[0]!.title).toBe("Post by Alice");
   });
 });

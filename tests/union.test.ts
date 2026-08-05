@@ -1,4 +1,4 @@
-import { Effect, Result, Schema, SchemaAST } from "effect";
+import { Effect, Schema, SchemaAST } from "effect";
 import { concreteUnionMember } from "../src/schema/sentinels.ts";
 import { describe, expect, it } from "vite-plus/test";
 import { Domain, field, node, operation } from "../src/index.ts";
@@ -41,10 +41,7 @@ describe("Unit 3: unions and sentinel discrimination", () => {
       }),
     );
 
-    const pet = Result.getOrThrow(result.pet) as Record<string, Result.Result<unknown, unknown>>;
-    expect(Result.getOrThrow(pet._tag)).toBe("cat");
-    expect(Result.getOrThrow(pet.name)).toBe("Whiskers");
-    expect(Result.getOrThrow(pet.meow)).toBe("Whiskers says meow");
+    expect(result.pet).toEqual({ _tag: "cat", name: "Whiskers", meow: "Whiskers says meow" });
   });
 
   it("resolves the other variant correctly", async () => {
@@ -68,9 +65,7 @@ describe("Unit 3: unions and sentinel discrimination", () => {
       }),
     );
 
-    const pet = Result.getOrThrow(result.pet) as Record<string, Result.Result<unknown, unknown>>;
-    expect(Result.getOrThrow(pet._tag)).toBe("dog");
-    expect(Result.getOrThrow(pet.bark)).toBe("Rex says woof");
+    expect(result.pet).toEqual({ _tag: "dog", bark: "Rex says woof" });
   });
 
   it("works with non-_tag discriminator key", async () => {
@@ -118,12 +113,9 @@ describe("Unit 3: unions and sentinel discrimination", () => {
       }),
     );
 
-    const shape = Result.getOrThrow(result.shape) as Record<
-      string,
-      Result.Result<unknown, unknown>
-    >;
-    expect(Result.getOrThrow(shape.kind)).toBe("circle");
-    expect(Result.getOrThrow(shape.area)).toBeCloseTo(Math.PI * 25);
+    const shape = result.shape as { kind: string; area: number };
+    expect(shape.kind).toBe("circle");
+    expect(shape.area).toBeCloseTo(Math.PI * 25);
   });
 
   it("handles union in data field (not computed)", async () => {
@@ -142,9 +134,7 @@ describe("Unit 3: unions and sentinel discrimination", () => {
       }),
     );
 
-    const pet = Result.getOrThrow(result.pet) as Record<string, Result.Result<unknown, unknown>>;
-    expect(Result.getOrThrow(pet._tag)).toBe("dog");
-    expect(Result.getOrThrow(pet.bark)).toBe("Buddy says woof");
+    expect(result.pet).toEqual({ _tag: "dog", name: "Buddy", bark: "Buddy says woof" });
   });
 
   it("handles array of union items", async () => {
@@ -172,12 +162,10 @@ describe("Unit 3: unions and sentinel discrimination", () => {
       }),
     );
 
-    const pets = Result.getOrThrow(result.pets) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(pets).toHaveLength(2);
-    expect(Result.getOrThrow(pets[0]._tag)).toBe("cat");
-    expect(Result.getOrThrow(pets[1]._tag)).toBe("dog");
+    expect(result.pets).toEqual([
+      { _tag: "cat", name: "Whiskers" },
+      { _tag: "dog", name: "Rex" },
+    ]);
   });
 
   it("projects array-wrapped union roots", async () => {
@@ -209,10 +197,10 @@ describe("Unit 3: unions and sentinel discrimination", () => {
       }),
     );
 
-    expect(Result.getOrThrow(catRows[0]!.meow)).toBe("Whiskers says meow");
-    expect(Result.getOrThrow(catRows[0]!.bark)).toBeUndefined();
-    expect(Result.getOrThrow(dogRows[0]!.meow)).toBeUndefined();
-    expect(Result.getOrThrow(dogRows[0]!.bark)).toBe("Rex says woof");
+    expect(catRows[0]!.meow).toBe("Whiskers says meow");
+    expect(catRows[0]!.bark).toBeUndefined();
+    expect(dogRows[0]!.meow).toBeUndefined();
+    expect(dogRows[0]!.bark).toBe("Rex says woof");
   });
 
   it("NullOr with non-null value walks through union discrimination", async () => {
@@ -241,12 +229,7 @@ describe("Unit 3: unions and sentinel discrimination", () => {
       g.execute("get", { select: { profile: { select: { bio: true, upper: true } } } }),
     );
 
-    const profile = Result.getOrThrow(result.profile) as Record<
-      string,
-      Result.Result<unknown, unknown>
-    >;
-    expect(Result.getOrThrow(profile.bio)).toBe("hello");
-    expect(Result.getOrThrow(profile.upper)).toBe("HELLO");
+    expect(result.profile).toEqual({ bio: "hello", upper: "HELLO" });
   });
 });
 
@@ -263,9 +246,9 @@ describe("Union as operation type", () => {
       g.execute("getPet", { select: { _tag: true, name: true, meow: true } }),
     );
 
-    expect(Result.getOrThrow(result._tag)).toBe("cat");
-    expect(Result.getOrThrow(result.name)).toBe("Whiskers");
-    expect(Result.getOrThrow((result as any).meow)).toBe("Whiskers says meow");
+    expect(result._tag).toBe("cat");
+    expect(result.name).toBe("Whiskers");
+    expect((result as any).meow).toBe("Whiskers says meow");
   });
 
   it("resolves the other variant when operation type is a union", async () => {
@@ -280,8 +263,8 @@ describe("Union as operation type", () => {
       g.execute("getPet", { select: { _tag: true, name: true, bark: true } }),
     );
 
-    expect(Result.getOrThrow(result._tag)).toBe("dog");
-    expect(Result.getOrThrow((result as any).bark)).toBe("Rex says woof");
+    expect(result._tag).toBe("dog");
+    expect((result as any).bark).toBe("Rex says woof");
   });
 
   it("fails loudly when value matches no union variant at the operation root", async () => {
@@ -348,9 +331,7 @@ describe("Union as operation type", () => {
       g.execute("get", { select: { pet: { select: { _tag: true, meow: true } } } }),
     );
 
-    const pet = Result.getOrThrow(result.pet) as Record<string, Result.Result<unknown, unknown>>;
-    expect(Result.getOrThrow(pet._tag)).toBe("cat");
-    expect(Result.getOrThrow((pet as any).meow)).toBe("Whiskers says meow");
+    expect(result.pet).toEqual({ _tag: "cat", meow: "Whiskers says meow" });
   });
 
   it("resolves variant computed fields when union is wrapped in Suspend", async () => {
@@ -374,9 +355,7 @@ describe("Union as operation type", () => {
       g.execute("get", { select: { pet: { select: { _tag: true, bark: true } } } }),
     );
 
-    const pet = Result.getOrThrow(result.pet) as Record<string, Result.Result<unknown, unknown>>;
-    expect(Result.getOrThrow(pet._tag)).toBe("dog");
-    expect(Result.getOrThrow((pet as any).bark)).toBe("Rex says woof");
+    expect(result.pet).toEqual({ _tag: "dog", bark: "Rex says woof" });
   });
 
   it("resolves variant computed fields for each item in array of unions", async () => {
@@ -404,12 +383,13 @@ describe("Union as operation type", () => {
       }),
     );
 
-    const pets = Result.getOrThrow(result.pets) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(Result.getOrThrow(pets[0]._tag)).toBe("cat");
-    expect(Result.getOrThrow((pets[0] as any).meow)).toBe("Whiskers says meow");
-    expect(Result.getOrThrow((pets[1] as any).bark)).toBe("Rex says woof");
+    const pets = result.pets as Array<Record<string, unknown>>;
+    expect(pets[0]!._tag).toBe("cat");
+    expect(pets[0]!.meow).toBe("Whiskers says meow");
+    expect(pets[0]!.bark).toBeUndefined();
+    expect(pets[1]!._tag).toBe("dog");
+    expect(pets[1]!.bark).toBe("Rex says woof");
+    expect(pets[1]!.meow).toBeUndefined();
   });
 });
 
@@ -438,12 +418,7 @@ describe("Schema.Class union members", () => {
       }),
     );
 
-    const shape = Result.getOrThrow(result.shape) as Record<
-      string,
-      Result.Result<unknown, unknown>
-    >;
-    expect(Result.getOrThrow(shape._tag)).toBe("square");
-    expect(Result.getOrThrow(shape.side)).toBe(4);
+    expect(result.shape).toEqual({ _tag: "square", side: 4 });
   });
 
   it("collects declaration sentinels so the matched member is exact, not first-wins", () => {

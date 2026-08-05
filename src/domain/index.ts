@@ -98,38 +98,24 @@ export namespace Domain {
    */
   export type Execution<A> = DomainTypes.Execution<A>;
   /**
-   * Result tree for type `T` narrowed by selection `S` — what a projected
-   * node resolves to.
+   * Plain projected data for type `T` narrowed by selection `S` — what a
+   * projected node resolves to: selected scalars keep their raw types,
+   * sub-selected objects narrow recursively, nullish sub-selected values
+   * are `null`.
    *
-   * @since 0.1.0
+   * @since 0.2.0
    * @category models
    */
-  export type ResultOf<T, S> = DomainTypes.DomainResultOf<T, S>;
+  export type SelectedOf<T, S> = DomainTypes.DomainSelectedOf<T, S>;
   /**
-   * Operation-root result for root type `T` and selection `S`: projected
-   * trees for object roots, arrays of trees for array roots, `Option` for
+   * Operation-root projection for root type `T` and selection `S`: narrowed
+   * trees for object roots, arrays of trees for array roots, `null` for
    * nullable roots, and the raw value for opaque roots.
    *
-   * @since 0.1.0
+   * @since 0.2.0
    * @category models
    */
-  export type RootResultOf<T, S> = DomainTypes.DomainRootResultOf<T, S>;
-  /**
-   * Picks from `T` only the fields present in selection `S`, recursing
-   * through nested `select` blocks.
-   *
-   * @since 0.1.0
-   * @category models
-   */
-  export type NarrowBySelection<T, S> = DomainTypes.DomainNarrowBySelection<T, S>;
-  /**
-   * Wraps every field of `T` in `Result.Result` — the per-field isolation
-   * the walker guarantees.
-   *
-   * @since 0.1.0
-   * @category models
-   */
-  export type ResultTree<T> = DomainTypes.DomainResultTree<T>;
+  export type RootSelectedOf<T, S> = DomainTypes.DomainRootSelectedOf<T, S>;
 
   /**
    * Wire schema for a name-less invocation payload (`{ args?, select? }`),

@@ -142,8 +142,8 @@ const handler = Effect.gen(function* () {
 `Domain.wireClient(...)` is the client mirror. Give it the domain and "how to
 send", and it returns a client with full `domain.execute` /
 `domain.subscribe` typing — names, args, selections, selection-dependent
-result types — decoding responses back to live `Result` / error-class
-instances:
+result types. Successes arrive as plain selected data trees; failures decode
+back into live error-class instances:
 
 ```ts
 const client = Domain.wireClient(domain, {
@@ -160,9 +160,12 @@ const program = Effect.gen(function* () {
 });
 ```
 
-Serializing failures requires each fallible operation to declare an `error`
-schema (`operation({ error: UserNotFound, ... })`); `wireClient` enforces this
-at compile time, naming any operation that is missing one.
+Serializing failures requires each fallible operation — and each fallible
+computed field — to declare an `error` schema (`operation({ error:
+UserNotFound, ... })`, `field({ error: ..., ... })`); `wireClient` enforces
+this at compile time, naming any operation that is missing one. A field's
+typed failure fails the whole operation, so it arrives as that operation's
+`OperationError` cause.
 
 The dispatch ladder, then, is: `handleDispatch` for simple wire transports,
 `prepareDispatch` when policy must run between validation and execution,

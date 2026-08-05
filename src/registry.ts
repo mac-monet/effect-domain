@@ -1,4 +1,4 @@
-import { SchemaAST } from "effect";
+import { type Schema, SchemaAST } from "effect";
 import {
   type AnyOperationDef,
   getFieldDefs,
@@ -99,6 +99,67 @@ export interface NodeRegistry {
   readonly fieldDefsFor: (
     ast: SchemaAST.AST,
   ) => Record<string, StoredFieldDef<unknown>> | undefined;
+}
+
+/**
+ * Declared error schemas of every computed field reachable from an operation
+ * root: the root's node(s) plus everything transitively referenced through
+ * their fields. A field's typed failure fails the whole operation (strict
+ * walk semantics), so wire handlers union these into the operation's failure
+ * codec. Deduplicated by schema identity; cycle-safe via the reference graph.
+ *
+ * @since 0.2.0
+ * @category accessors
+ */
+export function reachableFieldErrorSchemas(
+  registry: NodeRegistry,
+  rootAst: SchemaAST.AST,
+): ReadonlyArray<Schema.Top> {
+  const out: Array<Schema.Top> = [];
+  const seenSchemas = new Set<Schema.Top>();
+  const seenNodes = new Set<RegisteredNode>();
+
+  function visitNode(node: RegisteredNode | undefined): void {
+    if (!node || seenNodes.has(node)) return;
+    seenNodes.add(node);
+    for (const def of Object.values(node.fieldDefs)) {
+      if (def.error !== undefined && !seenSchemas.has(def.error)) {
+        seenSchemas.add(def.error);
+        out.push(def.error);
+      }
+    }
+    for (const ref of node.references) {
+      visitNode(registry.nodes.get(ref.target));
+    }
+  }
+
+  // Seed: unwrap arrays/unions at the root until registered nodes appear.
+  function seed(ast: SchemaAST.AST, guard: Set<SchemaAST.AST>): void {
+    const typeAst = unwrapType(ast);
+    if (guard.has(typeAst)) return;
+    guard.add(typeAst);
+    const registered = registry.lookup(typeAst);
+    if (registered) {
+      visitNode(registered);
+      return;
+    }
+    if (SchemaAST.isUnion(typeAst)) {
+      for (const member of typeAst.types) seed(member, guard);
+      return;
+    }
+    if (SchemaAST.isArrays(typeAst)) {
+      for (const item of typeAst.rest) seed(item, guard);
+      for (const item of typeAst.elements) seed(item, guard);
+      return;
+    }
+    if (SchemaAST.isObjects(typeAst)) {
+      // Anonymous struct root: nodes may nest inside its properties.
+      for (const ps of typeAst.propertySignatures) seed(ps.type, guard);
+    }
+  }
+
+  seed(rootAst, new Set());
+  return out;
 }
 
 interface MutableRegisteredNode {

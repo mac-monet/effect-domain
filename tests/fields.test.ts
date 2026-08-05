@@ -1,4 +1,4 @@
-import { Effect, Result, Schema } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Domain, field, node, operation } from "../src/index.ts";
 import type { Selection } from "../src/index.ts";
@@ -23,8 +23,17 @@ const Comment = node(
   },
 );
 
-describe("Unit 4: partial success and field args", () => {
-  it("failing computed field produces Result.Failure, siblings still succeed", async () => {
+async function expectDies(effect: Effect.Effect<unknown, unknown, never>): Promise<void> {
+  const exit = await Effect.runPromiseExit(effect);
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit)) {
+    expect(Cause.hasDies(exit.cause)).toBe(true);
+    expect(Cause.hasFails(exit.cause)).toBe(false);
+  }
+}
+
+describe("Unit 4: strict field failures and field args", () => {
+  it("failing computed field fails the whole operation with its error", async () => {
     const Mixed = node("Mixed", Schema.Struct({ id: Schema.String }), {
       ok: field({
         type: Schema.String,
@@ -43,18 +52,14 @@ describe("Unit 4: partial success and field args", () => {
       }),
     });
 
-    const result = await Effect.runPromise(
-      g.execute("get", { select: { id: true, ok: true, boom: true } }),
+    const error = await Effect.runPromise(
+      Effect.flip(g.execute("get", { select: { id: true, ok: true, boom: true } })),
     );
 
-    expect(Result.isSuccess(result.id)).toBe(true);
-    expect(Result.getOrThrow(result.id)).toBe("1");
-    expect(Result.isSuccess(result.ok)).toBe(true);
-    expect(Result.getOrThrow(result.ok)).toBe("works");
-    expect(Result.isFailure(result.boom)).toBe(true);
+    expect(error).toBe("resolver error");
   });
 
-  it("multiple computed fields fail independently", async () => {
+  it("any of multiple failing computed fields fails the operation", async () => {
     const Multi = node("Multi", Schema.Struct({ id: Schema.String }), {
       a: field({ type: Schema.String, resolve: () => Effect.fail("error-a") }),
       b: field({ type: Schema.String, resolve: () => Effect.fail("error-b") }),
@@ -65,14 +70,11 @@ describe("Unit 4: partial success and field args", () => {
       get: operation({ type: Multi, resolve: () => Effect.succeed({ id: "1" }) }),
     });
 
-    const result = await Effect.runPromise(
-      g.execute("get", { select: { id: true, a: true, b: true, c: true } }),
+    const error = await Effect.runPromise(
+      Effect.flip(g.execute("get", { select: { id: true, a: true, b: true, c: true } })),
     );
 
-    expect(Result.isSuccess(result.id)).toBe(true);
-    expect(Result.isFailure(result.a)).toBe(true);
-    expect(Result.isFailure(result.b)).toBe(true);
-    expect(Result.isSuccess(result.c)).toBe(true);
+    expect(["error-a", "error-b"]).toContain(error);
   });
 
   it("field args decoded and available in resolver", async () => {
@@ -97,10 +99,10 @@ describe("Unit 4: partial success and field args", () => {
       }),
     );
 
-    expect(Result.getOrThrow(result.greeting)).toBe("Hello, Alice (42)!");
+    expect(result.greeting).toBe("Hello, Alice (42)!");
   });
 
-  it("invalid field args produce Result.Failure", async () => {
+  it("invalid field args fail the operation", async () => {
     const WithArgs = node("WithArgs", Schema.Struct({ id: Schema.String }), {
       greeting: field({
         type: Schema.String,
@@ -116,13 +118,16 @@ describe("Unit 4: partial success and field args", () => {
       }),
     });
 
-    const result = await Effect.runPromise(
+    const exit = await Effect.runPromiseExit(
       g.execute("get", {
         select: { greeting: { args: { name: 123 } } },
       }),
     );
 
-    expect(Result.isFailure(result.greeting)).toBe(true);
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(Cause.hasFails(exit.cause)).toBe(true);
+    }
   });
 
   it("alias renames the output key", async () => {
@@ -146,7 +151,7 @@ describe("Unit 4: partial success and field args", () => {
       }),
     );
 
-    expect(Result.getOrThrow((result as any).hi)).toBe("hello");
+    expect((result as any).hi).toBe("hello");
     expect("greeting" in result).toBe(false);
   });
 
@@ -172,9 +177,7 @@ describe("Unit 4: partial success and field args", () => {
     );
 
     expect(Object.hasOwn(result, "__proto__")).toBe(true);
-    expect(
-      Result.getOrThrow((result as Record<string, Result.Result<unknown, unknown>>).__proto__),
-    ).toBe("hello");
+    expect((result as Record<string, unknown>).__proto__).toBe("hello");
   });
 
   it("multi-alias array form selects same field with different args", async () => {
@@ -204,20 +207,11 @@ describe("Unit 4: partial success and field args", () => {
       }),
     );
 
-    const users = Result.getOrThrow((result as any).users) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(users).toHaveLength(1);
-    expect(Result.getOrThrow(users[0].name)).toBe("user-user");
-
-    const admins = Result.getOrThrow((result as any).admins) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(admins).toHaveLength(1);
-    expect(Result.getOrThrow(admins[0].name)).toBe("admin-user");
+    expect((result as any).users).toEqual([{ name: "user-user" }]);
+    expect((result as any).admins).toEqual([{ name: "admin-user" }]);
   });
 
-  it("field without args schema rejects selection args", async () => {
+  it("field without args schema dies on selection args (caller misuse)", async () => {
     const NoArgs = node("NoArgs", Schema.Struct({ id: Schema.String }), {
       value: field({
         type: Schema.String,
@@ -232,16 +226,14 @@ describe("Unit 4: partial success and field args", () => {
       }),
     });
 
-    const result = await Effect.runPromise(
+    await expectDies(
       g.execute("get", {
         select: { value: { args: { unexpected: true } } },
       }),
     );
-
-    expect(Result.isFailure(result.value)).toBe(true);
   });
 
-  it("data fields reject selection args", async () => {
+  it("data fields die on selection args (caller misuse)", async () => {
     const Plain = node("PlainArgs", Schema.Struct({ id: Schema.String }), {});
 
     const g = Domain.make({
@@ -251,13 +243,11 @@ describe("Unit 4: partial success and field args", () => {
       }),
     });
 
-    const result = await Effect.runPromise(
+    await expectDies(
       g.execute("get", {
         select: { id: { args: { unexpected: true } } },
       }),
     );
-
-    expect(Result.isFailure(result.id)).toBe(true);
   });
 });
 
@@ -293,21 +283,17 @@ describe("Recursive (Suspend) schemas", () => {
       }),
     );
 
-    expect(Result.getOrThrow(result.body)).toBe("hello");
-    expect(Result.getOrThrow(result.shout)).toBe("HELLO");
-
-    const replies = Result.getOrThrow(result.replies) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(replies).toHaveLength(2);
-    expect(Result.getOrThrow(replies[0].body)).toBe("world");
-    expect(Result.getOrThrow(replies[0].shout)).toBe("WORLD");
-
-    const nested = Result.getOrThrow(replies[1].replies) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(nested).toHaveLength(1);
-    expect(Result.getOrThrow(nested[0].body)).toBe("deep");
-    expect(Result.getOrThrow(nested[0].shout)).toBe("DEEP");
+    expect(result).toEqual({
+      body: "hello",
+      shout: "HELLO",
+      replies: [
+        { body: "world", shout: "WORLD", replies: [] },
+        {
+          body: "nested",
+          shout: "NESTED",
+          replies: [{ body: "deep", shout: "DEEP" }],
+        },
+      ],
+    });
   });
 });

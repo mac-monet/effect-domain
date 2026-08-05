@@ -19,8 +19,6 @@ export type {
 export type { FieldEdge, DomainTopology } from "./domain/topology.ts";
 export type { ReadSet, ReadSetEntry } from "./walk.ts";
 export { Domain } from "./domain/index.ts";
-export { annotatePaths } from "./response/annotate-paths.ts";
-export type { Path, PathEntry } from "./response/annotate-paths.ts";
 export type { DomainInstance, PreparedDispatch } from "./domain/index.ts";
 export type {
   ComputedFieldInfo,

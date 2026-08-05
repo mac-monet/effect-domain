@@ -1,4 +1,4 @@
-import { Deferred, Effect, Fiber, Option, Result, Schema } from "effect";
+import { Deferred, Effect, Fiber, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Domain, field, node, operation } from "../src/index.ts";
 
@@ -32,13 +32,9 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
       }),
     );
 
-    expect(Result.getOrThrow(result.id)).toBe("1");
-    const profileResult = Result.getOrThrow(result.profile) as Record<
-      string,
-      Result.Result<unknown, unknown>
-    >;
-    expect(Result.getOrThrow(profileResult.bio)).toBe("hello");
-    expect("age" in profileResult).toBe(false);
+    expect(result.id).toBe("1");
+    expect(result.profile).toEqual({ bio: "hello" });
+    expect("age" in result.profile).toBe(false);
   });
 
   it("walks array fields per-item with sub-selection", async () => {
@@ -66,14 +62,10 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
       }),
     );
 
-    const posts = Result.getOrThrow(result.posts) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(posts).toHaveLength(2);
-    expect(Result.getOrThrow(posts[0].id)).toBe("p1");
-    expect(Result.getOrThrow(posts[0].upper)).toBe("FIRST");
-    expect(Result.getOrThrow(posts[1].id)).toBe("p2");
-    expect(Result.getOrThrow(posts[1].upper)).toBe("SECOND");
+    expect(result.posts).toEqual([
+      { id: "p1", upper: "FIRST" },
+      { id: "p2", upper: "SECOND" },
+    ]);
   });
 
   it("walks inline array data fields (not computed) with sub-selection", async () => {
@@ -91,15 +83,10 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
       g.execute("get", { select: { items: { select: { name: true } } } }),
     );
 
-    const items = Result.getOrThrow(result.items) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(items).toHaveLength(2);
-    expect(Result.getOrThrow(items[0].name)).toBe("a");
-    expect(Result.getOrThrow(items[1].name)).toBe("b");
+    expect(result.items).toEqual([{ name: "a" }, { name: "b" }]);
   });
 
-  it("handles null parent at boundary — returns Option.none(), not walked object", async () => {
+  it("handles null parent at boundary — returns null, not walked object", async () => {
     const Profile = node("NullableProfile", Schema.Struct({ bio: Schema.String }), {});
 
     const UserWithNullable = node("UserWithNullable", Schema.Struct({ id: Schema.String }), {
@@ -122,12 +109,10 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
       }),
     );
 
-    expect(
-      Option.isNone(Result.getOrThrow(result.profile) as unknown as Option.Option<unknown>),
-    ).toBe(true);
+    expect(result.profile).toBeNull();
   });
 
-  it("handles null in data field — returns Option.none()", async () => {
+  it("handles null in data field — returns null", async () => {
     const WithNullable = node(
       "WithNullable",
       Schema.Struct({ name: Schema.NullOr(Schema.Struct({ first: Schema.String })) }),
@@ -145,9 +130,7 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
       g.execute("get", { select: { name: { select: { first: true } } } }),
     );
 
-    expect(Option.isNone(Result.getOrThrow(result.name) as unknown as Option.Option<unknown>)).toBe(
-      true,
-    );
+    expect(result.name).toBeNull();
   });
 
   it("concurrency defaults to unbounded", async () => {
@@ -197,8 +180,7 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
         yield* Deferred.succeed(release, undefined);
         const result = yield* Fiber.join(fiber);
 
-        expect(Result.getOrThrow(result.a)).toBe("a");
-        expect(Result.getOrThrow(result.b)).toBe("b");
+        expect(result).toEqual({ a: "a", b: "b" });
       }),
     );
   });
@@ -262,9 +244,7 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
 
         const result = yield* Fiber.join(fiber);
 
-        expect(Result.getOrThrow(result.a)).toBe("a");
-        expect(Result.getOrThrow(result.b)).toBe("b");
-        expect(Result.getOrThrow(result.c)).toBe("c");
+        expect(result).toEqual({ a: "a", b: "b", c: "c" });
       }),
     );
   });
@@ -289,14 +269,6 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
       }),
     );
 
-    const profile = Result.getOrThrow(result.profile) as Record<
-      string,
-      Result.Result<unknown, unknown>
-    >;
-    const address = Result.getOrThrow(profile.address) as Record<
-      string,
-      Result.Result<unknown, unknown>
-    >;
-    expect(Result.getOrThrow(address.city)).toBe("NYC");
+    expect(result.profile.address.city).toBe("NYC");
   });
 });

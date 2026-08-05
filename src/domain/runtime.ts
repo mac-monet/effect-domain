@@ -21,7 +21,7 @@ import {
   invocationKey,
   selectionsEqual,
 } from "../invocation-key.ts";
-import { buildRegistry, type NodeRegistry } from "../registry.ts";
+import { buildRegistry, type NodeRegistry, reachableFieldErrorSchemas } from "../registry.ts";
 import { buildTopology, type DomainTopology } from "./topology.ts";
 import { rootToResponseSchema } from "../response/codec.ts";
 import { analyzeSelection } from "../selection/analyze.ts";
@@ -168,6 +168,20 @@ function makeDomainWithLayers<
     return decodeBoundary(config, ops, selectionSchemaFor, expectedKind);
   }
 
+  // A field's typed failure fails the whole operation, so the wire cause
+  // schema is the operation's declared errors plus every reachable field's.
+  // Memoized per operation — reachability is selection-independent.
+  const causeSchemas = new Map<string, Schema.Top>();
+  function operationCauseSchema(name: string, op: AnyOperationDef): Schema.Top {
+    const cached = causeSchemas.get(name);
+    if (cached) return cached;
+    const fieldErrors = reachableFieldErrorSchemas(registry, op.type.ast);
+    const declared = op.error ?? Schema.Never;
+    const built = fieldErrors.length === 0 ? declared : Schema.Union([declared, ...fieldErrors]);
+    causeSchemas.set(name, built);
+    return built;
+  }
+
   function executeBoundary(decoded: BoundaryDecoded, options?: DispatchOptions) {
     const config = internalConfig({
       args: decoded.args,
@@ -268,7 +282,10 @@ function makeDomainWithLayers<
     } catch {
       return gatewayResultCodec();
     }
-    const failure = Schema.Union([GatewayError, OperationError.schema(op.error ?? Schema.Never)]);
+    const failure = Schema.Union([
+      GatewayError,
+      OperationError.schema(operationCauseSchema(name, op)),
+    ]);
     // Success/failure services are unknown at this erased level; the public
     // interface asserts never per the responseSchema convention.
     return ResultCodec(success, failure) as DynamicCodec;
@@ -375,7 +392,7 @@ function makeDomainWithLayers<
       const success = rootToResponseSchema(registry, op.type.ast, selection);
       const failure = Schema.Union([
         GatewayError,
-        OperationError.schema(operationErrorSchema ?? op.error ?? Schema.Never),
+        OperationError.schema(operationErrorSchema ?? operationCauseSchema(name, op)),
       ]);
       return ResultCodec(success, failure);
     },

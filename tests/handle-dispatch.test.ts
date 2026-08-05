@@ -20,10 +20,9 @@ describe("handleDispatch", () => {
 
     const decoded = decode("getUser", select)(encoded);
     expect(Result.isSuccess(decoded)).toBe(true);
-    const user = (decoded as Result.Success<Record<string, Result.Result<string, never>>, never>)
-      .success;
-    expect(Result.getOrThrow(user.id)).toBe("1");
-    expect(Result.getOrThrow(user.fullName)).toBe("Alice Anderson");
+    const user = (decoded as Result.Success<Record<string, string>, never>).success;
+    expect(user.id).toBe("1");
+    expect(user.fullName).toBe("Alice Anderson");
   });
 
   it("encodes a declared operation error that decodes to a live instance", async () => {
@@ -144,24 +143,22 @@ describe("wireClient over handleDispatch (in-process wire)", () => {
     subscribe: (request) => liveDomain.handleSubscription(request),
   });
 
-  it("types nested projections as Result trees (regression: Omit broke const-S inference)", () => {
+  it("types nested projections as plain data trees (regression: Omit broke const-S inference)", () => {
     const eff = client.execute("getUser", {
       args: { id: "1" },
       select: { id: true, profile: { select: { location: true } } },
     });
     type Success = Effect.Success<typeof eff>;
-    expectTypeOf<Success["id"]>().toEqualTypeOf<Result.Result<string, unknown>>();
-    expectTypeOf<Success["profile"]>().toEqualTypeOf<
-      Result.Result<{ location: Result.Result<string, unknown> }, unknown>
-    >();
+    expectTypeOf<Success["id"]>().toExtend<string>();
+    expectTypeOf<Success["profile"]>().toExtend<{ readonly location: string }>();
   });
 
   it("round-trips a typed success", async () => {
     const user = await Effect.runPromise(
       client.execute("getUser", { args: { id: "1" }, select: { id: true, fullName: true } }),
     );
-    expect(Result.getOrThrow(user.id)).toBe("1");
-    expect(Result.getOrThrow(user.fullName)).toBe("Alice Anderson");
+    expect(user.id).toBe("1");
+    expect(user.fullName).toBe("Alice Anderson");
   });
 
   it("unwraps a declared error into the typed error channel", async () => {
@@ -178,6 +175,6 @@ describe("wireClient over handleDispatch (in-process wire)", () => {
         client.subscribe("watchUsers", { args: { start: 5 }, select: { id: true } }),
       ),
     );
-    expect(items.map((row) => Result.getOrThrow(row.id))).toEqual(["5", "6"]);
+    expect(items.map((row) => row.id)).toEqual(["5", "6"]);
   });
 });

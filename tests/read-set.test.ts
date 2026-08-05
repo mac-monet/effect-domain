@@ -1,4 +1,4 @@
-import { Effect, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Domain, node, operation, type ReadSet } from "../src/index.ts";
 
@@ -80,7 +80,7 @@ describe("execute with reads: true", () => {
         },
       }),
     );
-    expect(Result.getOrThrow(result.id)).toBe("f1");
+    expect(result.id).toBe("f1");
     expect(keys(reads)).toEqual(["Feed:feed:f1", "Post:p1", "Post:p2", "User:a"]);
   });
 
@@ -129,6 +129,6 @@ describe("execute with reads: true", () => {
       domain.execute("getFeed", { args: { id: "f1" }, select: { id: true } }),
     );
     expect(result).not.toHaveProperty("reads");
-    expect(Result.getOrThrow(result.id)).toBe("f1");
+    expect(result.id).toBe("f1");
   });
 });

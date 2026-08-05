@@ -1,4 +1,4 @@
-import { Effect, Result } from "effect";
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { domain, UserRepoLive } from "../examples/domain.ts";
 import { makeInMemorySyncEngine } from "../examples/sync-engine.ts";
@@ -38,12 +38,9 @@ describe("Example: in-memory sync engine", () => {
       throw new Error("expected item events");
     }
 
-    const firstValue = first.value as Record<string, Result.Result<string, unknown>>;
-    const secondValue = second.value as Record<string, Result.Result<string, unknown>>;
-    expect(Result.getOrThrow(firstValue.id)).toBe("10");
-    expect(Result.getOrThrow(firstValue.fullName)).toBe("Stream One");
-    expect(Result.getOrThrow(secondValue.id)).toBe("11");
-    expect(Result.getOrThrow(secondValue.fullName)).toBe("Stream Two");
+    // Stored events carry plain data snapshots.
+    expect(first.value).toEqual({ id: "10", fullName: "Stream One" });
+    expect(second.value).toEqual({ id: "11", fullName: "Stream Two" });
 
     const afterFirst = await Effect.runPromise(
       sync.pull({ clientId: "client-1", after: first.seq }),

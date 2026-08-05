@@ -2,31 +2,21 @@ import { describe, expect, it } from "vite-plus/test";
 import type { UserNotFound } from "../examples/domain.ts";
 import { webHandler } from "../examples/http-api.ts";
 
-type WireResult<A> = {
-  readonly _tag: "Success";
-  readonly success: A;
-};
-type WireFailure = {
-  readonly _tag: "Failure";
-  readonly failure: unknown;
-};
-type WireField<A> = WireResult<A> | WireFailure;
-
 describe("Example: HttpApi via domain.bind", () => {
   it("GET /users/1 returns the user detail route's selected result tree", async () => {
     const response = await webHandler(new Request("http://localhost/users/1"));
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
-      readonly id: WireResult<string>;
-      readonly fullName: WireResult<string>;
-      readonly profile: WireResult<{
-        readonly location: WireResult<string>;
-      }>;
+      readonly id: string;
+      readonly fullName: string;
+      readonly profile: {
+        readonly location: string;
+      };
     };
-    expect(body.id.success).toBe("1");
-    expect(body.fullName.success).toBe("Alice Anderson");
-    expect(body.profile.success.location.success).toBe("Taipei");
+    expect(body.id).toBe("1");
+    expect(body.fullName).toBe("Alice Anderson");
+    expect(body.profile.location).toBe("Taipei");
   });
 
   it("GET /users/1/card returns another fixed route shape from the same domain operation", async () => {
@@ -34,16 +24,16 @@ describe("Example: HttpApi via domain.bind", () => {
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
-      readonly id: WireResult<string>;
-      readonly greeting: WireResult<string>;
-      readonly profile: WireResult<{
-        readonly bio: WireResult<string>;
-      }>;
-      readonly fullName?: WireField<string>;
+      readonly id: string;
+      readonly greeting: string;
+      readonly profile: {
+        readonly bio: string;
+      };
+      readonly fullName?: string;
     };
-    expect(body.id.success).toBe("1");
-    expect(body.greeting.success).toBe("Dr. Alice Anderson");
-    expect(body.profile.success.bio.success).toBe("Maintains the domain gateway");
+    expect(body.id).toBe("1");
+    expect(body.greeting).toBe("Dr. Alice Anderson");
+    expect(body.profile.bio).toBe("Maintains the domain gateway");
     expect(body.fullName).toBeUndefined();
   });
 
@@ -60,9 +50,9 @@ describe("Example: HttpApi via domain.bind", () => {
     );
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as Record<string, WireResult<string>>;
-    expect(body.id.success).toEqual(expect.any(String));
-    expect(body.fullName.success).toBe("Grace Hopper");
+    const body = (await response.json()) as Record<string, string>;
+    expect(body.id).toEqual(expect.any(String));
+    expect(body.fullName).toBe("Grace Hopper");
   });
 
   it("GET /users/missing returns the endpoint's HTTP error shape", async () => {

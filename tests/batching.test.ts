@@ -1,4 +1,4 @@
-import { Effect, Result, Schema } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 import * as fc from "fast-check";
 import { describe, expect, it } from "vite-plus/test";
 import { Domain, field, node, operation } from "../src/index.ts";
@@ -57,9 +57,7 @@ describe("Unit 5: batched fields via key", () => {
       }),
     );
 
-    const authors = Result.getOrThrow(result.authors) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
+    const authors = result.authors as Array<Record<string, unknown>>;
     expect(authors).toHaveLength(3);
     expect(batchCallCount).toBe(1);
     expect(receivedKeys).toHaveLength(3);
@@ -67,11 +65,7 @@ describe("Unit 5: batched fields via key", () => {
     expect(receivedKeys).toContain("a2");
     expect(receivedKeys).toContain("a3");
 
-    const posts0 = Result.getOrThrow(authors[0].posts) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(posts0).toHaveLength(1);
-    expect(Result.getOrThrow(posts0[0].title)).toBe("Post by a1");
+    expect(authors[0]!.posts).toEqual([{ title: "Post by a1" }]);
   });
 
   it("results mapped back to correct parents", async () => {
@@ -109,12 +103,11 @@ describe("Unit 5: batched fields via key", () => {
       }),
     );
 
-    const items = Result.getOrThrow(result.items) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(Result.getOrThrow(items[0].detail)).toBe("detail-for-x");
-    expect(Result.getOrThrow(items[1].detail)).toBe("detail-for-y");
-    expect(Result.getOrThrow(items[2].detail)).toBe("detail-for-z");
+    expect(result.items).toEqual([
+      { id: "x", detail: "detail-for-x" },
+      { id: "y", detail: "detail-for-y" },
+      { id: "z", detail: "detail-for-z" },
+    ]);
   });
 
   it("FieldFactory callback works for both field modes", async () => {
@@ -167,17 +160,14 @@ describe("Unit 5: batched fields via key", () => {
       }),
     );
 
-    const items = Result.getOrThrow(result.items) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(Result.getOrThrow(items[0].upper)).toBe("ALICE");
-    expect(Result.getOrThrow(items[0].related)).toBe("related-1");
-    expect(Result.getOrThrow(items[1].upper)).toBe("BOB");
-    expect(Result.getOrThrow(items[1].related)).toBe("related-2");
+    expect(result.items).toEqual([
+      { id: "1", upper: "ALICE", related: "related-1" },
+      { id: "2", upper: "BOB", related: "related-2" },
+    ]);
     expect(batchCalled).toBe(true);
   });
 
-  it("per-key failure produces Result.Failure for that parent, siblings succeed", async () => {
+  it("missing map entry for a key fails the operation with NoSuchElementError", async () => {
     const Item = node("FailItem", Schema.Struct({ id: Schema.String }), (f) => ({
       value: f.field({
         type: Schema.String,
@@ -208,23 +198,23 @@ describe("Unit 5: batched fields via key", () => {
       }),
     });
 
-    const result = await Effect.runPromise(
+    const exit = await Effect.runPromiseExit(
       g.execute("getItems", {
         select: { items: { select: { id: true, value: true } } },
       }),
     );
 
-    const items = Result.getOrThrow(result.items) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(Result.isSuccess(items[0].value)).toBe(true);
-    expect(Result.getOrThrow(items[0].value)).toBe("value-good");
-    expect(Result.isFailure(items[1].value)).toBe(true);
-    expect(Result.isSuccess(items[2].value)).toBe(true);
-    expect(Result.getOrThrow(items[2].value)).toBe("value-also-good");
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.findErrorOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(Cause.isNoSuchElementError(failure.value)).toBe(true);
+      }
+    }
   });
 
-  it("batch-level failure fails all parents using that field", async () => {
+  it("batch-level failure fails the operation with the batch error", async () => {
     const Item = node("BatchFailItem", Schema.Struct({ id: Schema.String }), (f) => ({
       value: f.field({
         type: Schema.String,
@@ -247,22 +237,18 @@ describe("Unit 5: batched fields via key", () => {
       }),
     });
 
-    const result = await Effect.runPromise(
-      g.execute("getItems", {
-        select: { items: { select: { id: true, value: true } } },
-      }),
+    const error = await Effect.runPromise(
+      Effect.flip(
+        g.execute("getItems", {
+          select: { items: { select: { id: true, value: true } } },
+        }),
+      ),
     );
 
-    const items = Result.getOrThrow(result.items) as Array<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(Result.isSuccess(items[0].id)).toBe(true);
-    expect(Result.isFailure(items[0].value)).toBe(true);
-    expect(Result.isSuccess(items[1].id)).toBe(true);
-    expect(Result.isFailure(items[1].value)).toBe(true);
+    expect(error).toBe("db-down");
   });
 
-  it("property: duplicate keys and missing map entries route per parent", async () => {
+  it("property: duplicate keys batch once; any missing entry fails the operation", async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(fc.constantFrom("a", "b", "c", "d"), { minLength: 1, maxLength: 8 }),
@@ -302,24 +288,28 @@ describe("Unit 5: batched fields via key", () => {
             }),
           });
 
-          const result = await Effect.runPromise(
+          const exit = await Effect.runPromiseExit(
             g.execute("getItems", {
               select: { items: { select: { id: true, value: true } } },
             }),
           );
-          const items = Result.getOrThrow(result.items) as Array<
-            Record<string, Result.Result<unknown, unknown>>
-          >;
 
           expect(receivedKeys).toEqual(ids);
-          expect(items).toHaveLength(ids.length);
-          for (let i = 0; i < ids.length; i++) {
-            const id = ids[i]!;
-            expect(Result.getOrThrow(items[i]!.id)).toBe(id);
-            if (missing.has(id)) {
-              expect(Result.isFailure(items[i]!.value)).toBe(true);
-            } else {
-              expect(Result.getOrThrow(items[i]!.value)).toBe(`value-${id}`);
+
+          const anyMissing = ids.some((id) => missing.has(id));
+          if (anyMissing) {
+            expect(Exit.isFailure(exit)).toBe(true);
+            if (Exit.isFailure(exit)) {
+              const failure = Cause.findErrorOption(exit.cause);
+              expect(failure._tag === "Some" && Cause.isNoSuchElementError(failure.value)).toBe(
+                true,
+              );
+            }
+          } else {
+            expect(Exit.isSuccess(exit)).toBe(true);
+            if (Exit.isSuccess(exit)) {
+              const items = exit.value.items as Array<Record<string, unknown>>;
+              expect(items).toEqual(ids.map((id) => ({ id, value: `value-${id}` })));
             }
           }
         },

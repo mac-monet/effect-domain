@@ -1,4 +1,4 @@
-import { Effect, Option, Result, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { field, Domain, node, operation, type Selection } from "../src/index.ts";
 
@@ -6,20 +6,8 @@ function decode(schema: unknown, input: unknown): unknown {
   return Schema.decodeUnknownSync(schema as Schema.Codec<unknown>)(input);
 }
 
-function toWire(value: unknown): unknown {
-  if (Result.isResult(value)) {
-    return Result.isSuccess(value)
-      ? { _tag: "Success", success: toWire(value.success) }
-      : { _tag: "Failure", failure: value.failure };
-  }
-  if (Option.isOption(value)) {
-    return Option.isNone(value) ? { _tag: "None" } : toWire(value.value);
-  }
-  if (Array.isArray(value)) return value.map(toWire);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, toWire(child)]));
-  }
-  return value;
+function toWire(schema: unknown, value: unknown): unknown {
+  return Schema.encodeUnknownSync(schema as Schema.Codec<unknown>)(value);
 }
 
 const User = node(
@@ -78,14 +66,13 @@ describe("projection shape regressions", () => {
     const dispatched = await Effect.runPromise(
       domain.dispatch({ name: "maybeUserGroups", select: selection }),
     );
-    const decoded = decode(domain.responseSchema("maybeUserGroups", selection), toWire(executed));
+    const responseSchema = domain.responseSchema("maybeUserGroups", selection);
+    const decoded = decode(responseSchema, toWire(responseSchema, executed));
 
     expect(Result.isSuccess(dispatched)).toBe(true);
-    const groups = decoded as ReadonlyArray<
-      ReadonlyArray<Record<string, Result.Result<unknown, unknown>>>
-    >;
-    expect(Result.getOrThrow(groups[0]![0]!.id)).toBe("1");
-    expect(Result.getOrThrow(groups[0]![0]!.fullName)).toBe("Ada Lovelace");
+    const groups = decoded as ReadonlyArray<ReadonlyArray<Record<string, unknown>>>;
+    expect(groups[0]![0]!.id).toBe("1");
+    expect(groups[0]![0]!.fullName).toBe("Ada Lovelace");
   });
 
   it("keeps array-wrapped object union roots projectable across all public surfaces", async () => {
@@ -106,13 +93,14 @@ describe("projection shape regressions", () => {
     const dispatched = await Effect.runPromise(
       domain.dispatch({ name: "listPets", select: selection }),
     );
-    const decoded = decode(domain.responseSchema("listPets", selection), toWire(executed));
+    const responseSchema = domain.responseSchema("listPets", selection);
+    const decoded = decode(responseSchema, toWire(responseSchema, executed));
 
     expect(Result.isSuccess(dispatched)).toBe(true);
-    const rows = decoded as ReadonlyArray<Record<string, Result.Result<unknown, unknown>>>;
-    expect(Result.getOrThrow(rows[0]!._tag)).toBe("dog");
-    expect(Result.getOrThrow(rows[0]!.meow)).toBeUndefined();
-    expect(Result.getOrThrow(rows[0]!.bark)).toBe("Rex barks");
+    const rows = decoded as ReadonlyArray<Record<string, unknown>>;
+    expect(rows[0]!._tag).toBe("dog");
+    expect(rows[0]!.meow).toBeUndefined();
+    expect(rows[0]!.bark).toBe("Rex barks");
   });
 
   it("keeps nested nullable array union roots projectable", async () => {
@@ -130,12 +118,13 @@ describe("projection shape regressions", () => {
 
     const executed = await Effect.runPromise(domain.execute("get", { select: selection }));
     const dispatched = await Effect.runPromise(domain.dispatch({ name: "get", select: selection }));
-    const decoded = decode(domain.responseSchema("get", selection), toWire(executed));
+    const responseSchema = domain.responseSchema("get", selection);
+    const decoded = decode(responseSchema, toWire(responseSchema, executed));
 
     expect(Result.isSuccess(dispatched)).toBe(true);
-    const rows = decoded as ReadonlyArray<Record<string, Result.Result<unknown, unknown>>>;
-    expect(Result.getOrThrow(rows[0]!.id)).toBe("1");
-    expect(Result.getOrThrow(rows[0]!.fullName)).toBe("Ada Lovelace");
+    const rows = decoded as ReadonlyArray<Record<string, unknown>>;
+    expect(rows[0]!.id).toBe("1");
+    expect(rows[0]!.fullName).toBe("Ada Lovelace");
   });
 
   it("treats mixed object/scalar roots as opaque across public surfaces", async () => {

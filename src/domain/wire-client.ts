@@ -67,7 +67,7 @@ export interface WireClient<Ops extends Record<string, AnyOperationDef>, TE = ne
     name: K,
     config: InvokeConfig<Ops[K], S>,
   ): Effect.Effect<
-    DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>,
+    DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
     ClientErrors<Ops[K], TE>
   >;
   subscribe<
@@ -77,7 +77,7 @@ export interface WireClient<Ops extends Record<string, AnyOperationDef>, TE = ne
     name: K,
     config: InvokeConfig<Ops[K], S>,
   ): Stream.Stream<
-    DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>,
+    DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
     ClientErrors<Ops[K], TE>
   >;
 }

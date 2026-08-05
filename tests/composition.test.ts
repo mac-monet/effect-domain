@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Result, Schema } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Domain, node, operation } from "../src/index.ts";
 
@@ -31,7 +31,7 @@ describe("Unit 8: provide(layer)", () => {
     const exec = provided.execute("getUser", { select: { id: true, greeting: true } });
 
     const result = await Effect.runPromise(exec);
-    expect(Result.getOrThrow(result.greeting)).toBe("Hello, Alice!");
+    expect(result.greeting).toBe("Hello, Alice!");
   });
 
   it("returns a new domain each provide() call (immutable)", () => {
@@ -96,7 +96,7 @@ describe("Unit 8: provide() layer composition", () => {
     const result = await Effect.runPromise(
       provided.execute("getItem", { select: { stamped: true } }),
     );
-    expect(Result.getOrThrow(result.stamped)).toBe("Hello, STAMP!");
+    expect(result.stamped).toBe("Hello, STAMP!");
   });
 
   it("layers cover BOTH operation resolver and field resolvers", async () => {
@@ -125,8 +125,8 @@ describe("Unit 8: provide() layer composition", () => {
     const result = await Effect.runPromise(
       g.execute("getItem", { select: { id: true, greeting: true } }),
     );
-    expect(Result.getOrThrow(result.id)).toBe("root");
-    expect(Result.getOrThrow(result.greeting)).toBe("Hello, root!");
+    expect(result.id).toBe("root");
+    expect(result.greeting).toBe("Hello, root!");
   });
 });
 
@@ -234,12 +234,12 @@ describe("Unit 8: merge via spread", () => {
     );
 
     const item = await Effect.runPromise(merged.execute("getItem", { select: { greeting: true } }));
-    expect(Result.getOrThrow(item.greeting)).toBe("Hello, Alice!");
+    expect(item.greeting).toBe("Hello, Alice!");
 
     const counter = await Effect.runPromise(
       merged.execute("getCount", { select: { stamped: true } }),
     );
-    expect(Result.getOrThrow(counter.stamped)).toBe("STAMPED/7");
+    expect(counter.stamped).toBe("STAMPED/7");
   });
 });
 
@@ -268,12 +268,12 @@ describe("Unit 8: merge via spread (basic)", () => {
     const item = await Effect.runPromise(
       merged.execute("getItem", { select: { id: true, name: true } }),
     );
-    expect(Result.getOrThrow(item.id)).toBe("1");
-    expect(Result.getOrThrow(item.name)).toBe("A");
+    expect(item.id).toBe("1");
+    expect(item.name).toBe("A");
 
     const counter = await Effect.runPromise(
       merged.execute("getCount", { select: { count: true } }),
     );
-    expect(Result.getOrThrow(counter.count)).toBe(42);
+    expect(counter.count).toBe(42);
   });
 });

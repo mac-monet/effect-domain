@@ -25,9 +25,9 @@ describe("Examples: persistence-backed domain", () => {
         .pipe(Effect.provide(makePersistenceLive(observed))),
     );
 
-    expect(Result.getOrThrow(result.id)).toBe("acct_1");
-    expect(Result.getOrThrow(result.email)).toBe("ada@example.com");
-    expect(Result.getOrThrow(result.displayName)).toBe("Ada Lovelace");
+    expect(result.id).toBe("acct_1");
+    expect(result.email).toBe("ada@example.com");
+    expect(result.displayName).toBe("Ada Lovelace");
     expect(observed.profileJoins).toBe(1);
     expect(observed.organizationBatchCalls).toBe(0);
   });
@@ -45,13 +45,11 @@ describe("Examples: persistence-backed domain", () => {
         .pipe(Effect.provide(makePersistenceLive(observed))),
     );
 
-    expect(result.map((user) => Result.getOrThrow(user.displayName))).toEqual([
-      "Ada Lovelace",
-      "Grace Hopper",
+    expect(result.map((user) => user.displayName)).toEqual(["Ada Lovelace", "Grace Hopper"]);
+    expect(result.map((user) => user.organization.name)).toEqual([
+      "Analytical Engines",
+      "Analytical Engines",
     ]);
-    expect(
-      result.map((user) => Result.getOrThrow(Result.getOrThrow(user.organization).name)),
-    ).toEqual(["Analytical Engines", "Analytical Engines"]);
     expect(observed.organizationBatchCalls).toBe(1);
     expect(observed.lastOrganizationAccountIds).toEqual(["acct_1", "acct_2"]);
   });

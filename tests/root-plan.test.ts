@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Option, Result, Schema, SchemaAST } from "effect";
+import { Cause, Effect, Exit, Schema, SchemaAST } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Domain, field, node, operation } from "../src/index.ts";
 import { rootPlan } from "../src/selection/projection.ts";
@@ -179,20 +179,20 @@ describe("root plan interpreter agreement", () => {
     }),
   });
 
-  it("walker projects nullable array roots and maps null to Option.none", async () => {
+  it("walker projects nullable array roots and maps null to plain null", async () => {
     const projected = await Effect.runPromise(
       nullableList.execute("maybeUsers", {
         args: { empty: false },
         select: { id: true, fullName: true },
       }),
     );
-    const rows = projected as ReadonlyArray<Record<string, Result.Result<string, unknown>>>;
-    expect(Result.getOrThrow(rows[0]!.fullName)).toBe("Alice Smith");
+    const rows = projected as unknown as ReadonlyArray<Record<string, string>>;
+    expect(rows[0]!.fullName).toBe("Alice Smith");
 
     const absent = await Effect.runPromise(
       nullableList.execute("maybeUsers", { args: { empty: true }, select: { id: true } }),
     );
-    expect(Option.isNone(absent as Option.Option<never>)).toBe(true);
+    expect(absent).toBeNull();
   });
 
   it("selectionSchema accepts element selections for nullable array roots", () => {
@@ -202,15 +202,13 @@ describe("root plan interpreter agreement", () => {
     expect(() => decode(schema, { unknownField: true })).toThrow();
   });
 
-  it("responseSchema wraps nullable array roots in a none-or-value codec", () => {
+  it("responseSchema wraps nullable array roots in a null-or-value codec", () => {
     const selection = decode(nullableList.selectionSchema("maybeUsers"), { id: true });
     const schema = nullableList.responseSchema("maybeUsers", selection as Selection);
 
-    expect(Option.isNone(decode(schema, { _tag: "None" }) as Option.Option<never>)).toBe(true);
-    const rows = decode(schema, [{ id: { _tag: "Success", success: "1" } }]) as ReadonlyArray<
-      Record<string, Result.Result<string, unknown>>
-    >;
-    expect(Result.getOrThrow(rows[0]!.id)).toBe("1");
+    expect(decode(schema, null)).toBeNull();
+    const rows = decode(schema, [{ id: "1" }]) as ReadonlyArray<Record<string, string>>;
+    expect(rows[0]!.id).toBe("1");
   });
 
   const opaqueList = Domain.make({
@@ -265,19 +263,19 @@ describe("root plan interpreter agreement", () => {
     }),
   });
 
-  it("walker maps null to Option.none on nullable opaque roots and passes values through", async () => {
+  it("walker maps null to plain null on nullable opaque roots and passes values through", async () => {
     expect(
       await Effect.runPromise(nullableScalar.execute("maybeCount", { args: { empty: false } })),
     ).toBe(3);
     const absent = await Effect.runPromise(
       nullableScalar.execute("maybeCount", { args: { empty: true } }),
     );
-    expect(Option.isNone(absent as Option.Option<never>)).toBe(true);
+    expect(absent).toBeNull();
   });
 
-  it("responseSchema derives none-or-value codecs for nullable opaque roots", () => {
+  it("responseSchema derives null-or-value codecs for nullable opaque roots", () => {
     const schema = nullableScalar.responseSchema("maybeCount", undefined as never);
-    expect(Option.isNone(decode(schema, { _tag: "None" }) as Option.Option<never>)).toBe(true);
+    expect(decode(schema, null)).toBeNull();
     expect(decode(schema, 3)).toBe(3);
   });
 
@@ -308,23 +306,20 @@ describe("root plan interpreter agreement", () => {
 
     const projected = (await Effect.runPromise(
       maybePet.execute("maybePet", { args: { empty: false }, select: { name: true } }),
-    )) as Record<string, Result.Result<string, unknown>>;
-    expect(Result.getOrThrow(projected.name!)).toBe("Mia");
+    )) as unknown as Record<string, string>;
+    expect(projected.name).toBe("Mia");
 
     const absent = await Effect.runPromise(
       maybePet.execute("maybePet", { args: { empty: true }, select: { name: true } }),
     );
-    expect(Option.isNone(absent as Option.Option<never>)).toBe(true);
+    expect(absent).toBeNull();
 
     expect(decode(maybePet.selectionSchema("maybePet"), { name: true })).toEqual({ name: true });
 
     const schema = maybePet.responseSchema("maybePet", { name: true } as never);
-    expect(Option.isNone(decode(schema, { _tag: "None" }) as Option.Option<never>)).toBe(true);
-    const decoded = decode(schema, { name: { _tag: "Success", success: "Mia" } }) as Record<
-      string,
-      Result.Result<string, unknown>
-    >;
-    expect(Result.getOrThrow(decoded.name!)).toBe("Mia");
+    expect(decode(schema, null)).toBeNull();
+    const decoded = decode(schema, { name: "Mia" }) as Record<string, string>;
+    expect(decoded.name).toBe("Mia");
   });
 
   it("walker projects multi-variant array-wrapped union roots per element", async () => {
@@ -336,15 +331,13 @@ describe("root plan interpreter agreement", () => {
     });
     const rows = (await Effect.runPromise(
       pets.execute("listPets", { select: { name: true } } as never),
-    )) as unknown as ReadonlyArray<Record<string, Result.Result<string, unknown>>>;
-    expect(Result.getOrThrow(rows[0]!.name)).toBe("Mia");
+    )) as unknown as ReadonlyArray<Record<string, string>>;
+    expect(rows[0]!.name).toBe("Mia");
 
     expect(decode(pets.selectionSchema("listPets"), { name: true })).toEqual({ name: true });
 
     const schema = pets.responseSchema("listPets", { name: true } as never);
-    const decoded = decode(schema, [
-      { name: { _tag: "Success", success: "Mia" } },
-    ]) as ReadonlyArray<Record<string, Result.Result<string, unknown>>>;
-    expect(Result.getOrThrow(decoded[0]!.name)).toBe("Mia");
+    const decoded = decode(schema, [{ name: "Mia" }]) as ReadonlyArray<Record<string, string>>;
+    expect(decoded[0]!.name).toBe("Mia");
   });
 });

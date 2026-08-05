@@ -1,4 +1,4 @@
-import { Effect, Layer, Result, Schema, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 import { Rpc, RpcGroup, RpcTest } from "effect/unstable/rpc";
 import { describe, expect, it } from "vite-plus/test";
 import { domain, UserRepoLive } from "../examples/domain.ts";
@@ -106,14 +106,14 @@ describe("Domain binding", () => {
     );
     const decoded = Effect.runSync(
       Schema.decodeUnknownEffect(domain.responseSchema("getUser", userSelect))({
-        id: { _tag: "Success", success: "1" },
-        fullName: { _tag: "Success", success: "Ada Lovelace" },
+        id: "1",
+        fullName: "Ada Lovelace",
       }),
-    ) as Record<string, Result.Result<string, unknown>>;
+    ) as Record<string, string>;
 
     expect(args).toEqual({ firstName: "Ada", lastName: "Lovelace" });
     expect(select).toEqual(userSelect);
-    expect(Result.getOrThrow(decoded.fullName)).toBe("Ada Lovelace");
+    expect(decoded.fullName).toBe("Ada Lovelace");
   });
 
   it("composes domain-backed operation services with native RpcGroup.toLayer", async () => {
@@ -137,15 +137,15 @@ describe("Domain binding", () => {
     const { user, created } = await Effect.runPromise(
       Effect.scoped(program.pipe(Effect.provide(Live))) as unknown as Effect.Effect<
         {
-          readonly user: Record<string, Result.Result<string, unknown>>;
-          readonly created: Record<string, Result.Result<string, unknown>>;
+          readonly user: Record<string, string>;
+          readonly created: Record<string, string>;
         },
         unknown,
         never
       >,
     );
-    expect(Result.getOrThrow(user.fullName)).toBe("Alice Anderson");
-    expect(Result.getOrThrow(created.fullName)).toBe("Ada Lovelace");
+    expect(user.fullName).toBe("Alice Anderson");
+    expect(created.fullName).toBe("Ada Lovelace");
   });
 
   it("supports renamed procedures with explicit args projection", async () => {
@@ -162,7 +162,7 @@ describe("Domain binding", () => {
     });
 
     const user = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(Live))));
-    expect(Result.getOrThrow(user.fullName)).toBe("Alice Anderson");
+    expect(user.fullName).toBe("Alice Anderson");
   });
 
   it("supports scalar root operations without a selection", async () => {
@@ -256,8 +256,8 @@ describe("Domain binding", () => {
     const { direct, renamed } = await Effect.runPromise(
       Effect.scoped(program.pipe(Effect.provide(Live))) as unknown as Effect.Effect<
         {
-          readonly direct: ReadonlyArray<Record<string, Result.Result<number, unknown>>>;
-          readonly renamed: ReadonlyArray<Record<string, Result.Result<number, unknown>>>;
+          readonly direct: ReadonlyArray<Record<string, number>>;
+          readonly renamed: ReadonlyArray<Record<string, number>>;
         },
         unknown,
         never
@@ -265,11 +265,11 @@ describe("Domain binding", () => {
     );
 
     expect(direct).toHaveLength(2);
-    expect(Result.getOrThrow(direct[0].value)).toBe(3);
-    expect(Result.getOrThrow(direct[0].doubled)).toBe(6);
-    expect(Result.getOrThrow(direct[1].value)).toBe(4);
-    expect(Result.getOrThrow(renamed[0].value)).toBe(7);
-    expect(Result.getOrThrow(renamed[0].doubled)).toBe(14);
+    expect(direct[0].value).toBe(3);
+    expect(direct[0].doubled).toBe(6);
+    expect(direct[1].value).toBe(4);
+    expect(renamed[0].value).toBe(7);
+    expect(renamed[0].doubled).toBe(14);
   });
 
   it("propagates domain stream failures through the RPC stream channel", async () => {
@@ -289,7 +289,7 @@ describe("Domain binding", () => {
 
     const program = Effect.gen(function* () {
       const client = yield* RpcTest.makeClient(StreamRpcs);
-      const seen: Array<Record<string, Result.Result<number, unknown>>> = [];
+      const seen: Array<Record<string, number>> = [];
       const exit = yield* Stream.runForEach(client.failCounters(), (item) =>
         Effect.sync(() => {
           seen.push(item);
@@ -301,7 +301,7 @@ describe("Domain binding", () => {
     const { seen, exit } = await Effect.runPromise(
       Effect.scoped(program.pipe(Effect.provide(Live))) as unknown as Effect.Effect<
         {
-          readonly seen: Array<Record<string, Result.Result<number, unknown>>>;
+          readonly seen: Array<Record<string, number>>;
           readonly exit: { readonly _tag: string };
         },
         never,
@@ -310,7 +310,7 @@ describe("Domain binding", () => {
     );
 
     expect(seen).toHaveLength(1);
-    expect(Result.getOrThrow(seen[0].doubled)).toBe(2);
+    expect(seen[0].doubled).toBe(2);
     expect(exit._tag).toBe("Failure");
   });
 
@@ -318,7 +318,7 @@ describe("Domain binding", () => {
     const counters = streamGraph.bindSubscriptions({
       failCountersWithError: { select: counterSelect },
     });
-    const seen: Array<Record<string, Result.Result<number, unknown>>> = [];
+    const seen: Array<Record<string, number>> = [];
 
     const exit = await Effect.runPromiseExit(
       Stream.runForEach(counters.failCountersWithError(), (item) =>
@@ -329,7 +329,7 @@ describe("Domain binding", () => {
     );
 
     expect(seen).toHaveLength(1);
-    expect(Result.getOrThrow(seen[0].doubled)).toBe(2);
+    expect(seen[0].doubled).toBe(2);
     expect(exit._tag).toBe("Failure");
   });
 });

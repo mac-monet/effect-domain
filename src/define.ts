@@ -12,18 +12,23 @@ const IdentityKey = "effect-domain/identity";
  * @since 0.1.0
  * @category models
  */
-export interface FieldDef<Type, Parent = unknown, _E = unknown, _R = unknown> {
+export interface FieldDef<Type, Parent = unknown, _E = unknown, _R = unknown, _ErrS = never> {
   readonly _kind: "computed" | "batched";
   readonly type: Schema.Schema<Type>;
   readonly _parent?: (parent: Parent) => void;
   readonly _error?: () => _E;
   readonly _requirements?: () => _R;
+  /** Phantom for the declared error schema, `never` when none was declared —
+   * the field-level analogue of `OperationDefinition`'s `ErrS`, consumed by
+   * `Domain.MissingErrorSchemas` to enforce wire round-trippability. */
+  readonly _errorSchema?: () => _ErrS;
 }
 
 interface ComputedFieldDef<Type, Parent, E, R> {
   readonly _kind: "computed";
   readonly type: Schema.Schema<Type>;
   readonly args?: Schema.Decoder<unknown>;
+  readonly error?: Schema.Top;
   readonly resolve: (ctx: {
     readonly parent: Parent;
     readonly args: never;
@@ -41,6 +46,7 @@ interface BatchedFieldDef<
   readonly _kind: "batched";
   readonly type: Schema.Schema<Type>;
   readonly key: (parent: Parent) => K;
+  readonly error?: Schema.Top;
   readonly resolver: RequestResolver.RequestResolver<BatchFieldRequest>;
 }
 
@@ -102,6 +108,15 @@ export type NodeType<
 export interface FieldConfig<Type, Parent, E, R, Args = never> {
   readonly type: Schema.Schema<Type>;
   readonly args?: Schema.Decoder<Args>;
+  /**
+   * Optional declared error schema describing the resolver's expected
+   * failures — the field-level mirror of `operation({ error })`. A field's
+   * typed failure fails the whole operation (strict semantics), so wire
+   * handlers union every reachable field error schema into the operation's
+   * failure codec; a fallible field without a declared schema cannot
+   * round-trip its failures.
+   */
+  readonly error?: Schema.Top;
   readonly resolve: (ctx: {
     readonly parent: Parent;
     readonly args: Args;
@@ -122,6 +137,8 @@ export interface FieldConfig<Type, Parent, E, R, Args = never> {
 export interface BatchedFieldConfig<Type, Parent, E, R, K extends string | number> {
   readonly type: Schema.Schema<Type>;
   readonly key: (parent: Parent) => K;
+  /** Optional declared error schema; see {@link FieldConfig.error}. */
+  readonly error?: Schema.Top;
   readonly resolve: (keys: ReadonlyArray<K>) => Effect.Effect<ReadonlyMap<K, Type>, E, R>;
 }
 
@@ -132,6 +149,7 @@ function makeComputedField(
     _kind: "computed",
     type: config.type,
     ...(config.args !== undefined ? { args: config.args } : {}),
+    ...(config.error !== undefined ? { error: config.error } : {}),
     resolve: config.resolve,
   };
 }
@@ -172,6 +190,7 @@ function makeBatchedField(
     _kind: "batched",
     type: config.type,
     key: config.key,
+    ...(config.error !== undefined ? { error: config.error } : {}),
     resolver,
   };
 }
@@ -208,11 +227,31 @@ function makeBatchedField(
  * @since 0.1.0
  * @category constructors
  */
+export function field<
+  Type,
+  Parent,
+  ErrS extends Schema.Top,
+  E extends ErrS["Type"],
+  R,
+  Args = never,
+>(
+  config: FieldConfig<Type, Parent, E, R, Args> & { readonly error: ErrS },
+): FieldDef<Type, Parent, E, R, ErrS>;
 export function field<Type, Parent, E, R, Args = never>(
-  config: FieldConfig<Type, Parent, E, R, Args>,
+  config: FieldConfig<Type, Parent, E, R, Args> & { readonly error?: never },
 ): FieldDef<Type, Parent, E, R>;
+export function field<
+  Type,
+  Parent,
+  ErrS extends Schema.Top,
+  E extends ErrS["Type"],
+  R,
+  K extends string | number,
+>(
+  config: BatchedFieldConfig<Type, Parent, E, R, K> & { readonly error: ErrS },
+): FieldDef<Type, Parent, E, R, ErrS>;
 export function field<Type, Parent, E, R, K extends string | number>(
-  config: BatchedFieldConfig<Type, Parent, E, R, K>,
+  config: BatchedFieldConfig<Type, Parent, E, R, K> & { readonly error?: never },
 ): FieldDef<Type, Parent, E, R>;
 export function field(
   config:
@@ -233,6 +272,7 @@ export interface StoredComputedFieldDef<R> {
   readonly _kind: "computed";
   readonly type: { readonly ast: SchemaAST.AST };
   readonly args?: Schema.Decoder<unknown>;
+  readonly error?: Schema.Top;
   readonly resolve: (ctx: {
     readonly parent: unknown;
     readonly args?: unknown;
@@ -244,6 +284,7 @@ export interface StoredBatchedFieldDef {
   readonly _kind: "batched";
   readonly type: { readonly ast: SchemaAST.AST };
   readonly key: (parent: unknown) => string | number;
+  readonly error?: Schema.Top;
   readonly resolver: RequestResolver.RequestResolver<BatchFieldRequest>;
 }
 
@@ -253,7 +294,7 @@ export function getFieldDefs<R = never>(
   return SchemaAST.resolveAt<Record<string, StoredFieldDef<R>>>(ComputedFieldsKey)(ast);
 }
 
-type AnyFieldDefFor<Parent> = FieldDef<unknown, Parent, unknown, unknown>;
+type AnyFieldDefFor<Parent> = FieldDef<unknown, Parent, unknown, unknown, unknown>;
 
 /**
  * Options for {@link node}. `identity` declares the node's canonical entity
@@ -360,11 +401,17 @@ export function node<
 }
 
 interface FieldFactory<Parent> {
+  field<Type, ErrS extends Schema.Top, E extends ErrS["Type"], R, Args = never>(
+    config: FieldConfig<Type, Parent, E, R, Args> & { readonly error: ErrS },
+  ): FieldDef<Type, Parent, E, R, ErrS>;
   field<Type, E, R, Args = never>(
-    config: FieldConfig<Type, Parent, E, R, Args>,
+    config: FieldConfig<Type, Parent, E, R, Args> & { readonly error?: never },
   ): FieldDef<Type, Parent, E, R>;
+  field<Type, ErrS extends Schema.Top, E extends ErrS["Type"], R, K extends string | number>(
+    config: BatchedFieldConfig<Type, Parent, E, R, K> & { readonly error: ErrS },
+  ): FieldDef<Type, Parent, E, R, ErrS>;
   field<Type, E, R, K extends string | number>(
-    config: BatchedFieldConfig<Type, Parent, E, R, K>,
+    config: BatchedFieldConfig<Type, Parent, E, R, K> & { readonly error?: never },
   ): FieldDef<Type, Parent, E, R>;
 }
 

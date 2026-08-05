@@ -1,4 +1,4 @@
-import { Effect, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { describe, expect, expectTypeOf, it } from "vite-plus/test";
 import { field, Domain, node, operation } from "../src/index.ts";
 
@@ -696,7 +696,7 @@ describe("Unit 9: selectionSchema — accepts existing test selections", () => {
       // biome-ignore lint/suspicious/noExplicitAny: integration check
       userGraph.execute("getUser", { args: { id: "1" }, select: decoded as any }),
     );
-    expect(Result.getOrThrow(result.id)).toBe("1");
-    expect(Result.getOrThrow(result.fullName)).toBe("Alice Smith");
+    expect(result.id).toBe("1");
+    expect(result.fullName).toBe("Alice Smith");
   });
 });

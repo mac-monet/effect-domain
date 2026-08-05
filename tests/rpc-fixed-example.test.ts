@@ -1,4 +1,4 @@
-import { Effect, Exit, Result } from "effect";
+import { Effect, Exit } from "effect";
 import { RpcTest } from "effect/unstable/rpc";
 import { describe, expect, it } from "vite-plus/test";
 import { UserNotFound } from "../examples/domain.ts";
@@ -19,17 +19,17 @@ describe("Examples: RPC via domain.bind", () => {
     const { user, created } = await Effect.runPromise(
       Effect.scoped(program.pipe(Effect.provide(RpcLive))) as unknown as Effect.Effect<
         {
-          readonly user: Record<string, Result.Result<string, unknown>>;
-          readonly created: Record<string, Result.Result<string, unknown>>;
+          readonly user: Record<string, string>;
+          readonly created: Record<string, string>;
         },
         never,
         never
       >,
     );
 
-    expect(Result.getOrThrow(user.id)).toBe("1");
-    expect(Result.getOrThrow(user.fullName)).toBe("Alice Anderson");
-    expect(Result.getOrThrow(created.fullName)).toBe("Evelyn Evans");
+    expect(user.id).toBe("1");
+    expect(user.fullName).toBe("Alice Anderson");
+    expect(created.fullName).toBe("Evelyn Evans");
   });
 
   it("client receives the typed operation error", async () => {

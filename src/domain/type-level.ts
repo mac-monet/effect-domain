@@ -1,4 +1,4 @@
-import type { Effect, Option, Result, Schema, Stream } from "effect";
+import type { Effect, Schema, Stream } from "effect";
 import type { AnyOperationDef, NodeMeta, OperationDefinition } from "../define.ts";
 import type { HasArrayMember, RootSelectionFor, UnionKeys } from "../selection/syntax.ts";
 import type { ReadSet } from "../walk.ts";
@@ -37,11 +37,13 @@ export type DeclaredErrorType<Op> = [ExtractErrorSchema<Op>] extends [never]
  * vacuously satisfied — enforce before erasing.
  */
 export type MissingErrorSchemas<Ops> = {
-  [K in keyof Ops]: [ExtractE<Ops[K]>] extends [never]
-    ? never
-    : [ExtractErrorSchema<Ops[K]>] extends [never]
-      ? K
-      : never;
+  [K in keyof Ops]:
+    | ([ExtractE<Ops[K]>] extends [never]
+        ? never
+        : [ExtractErrorSchema<Ops[K]>] extends [never]
+          ? K
+          : never)
+    | ([NodeUndeclaredE<UnwrapElement<ExtractType<Ops[K]>>>] extends [never] ? never : K);
 }[keyof Ops];
 
 /**
@@ -78,6 +80,7 @@ type ExtractStreamed<Op> =
 type KnownOrNever<X> = unknown extends X ? never : X;
 type FieldE<F> = F extends { readonly _error?: () => infer E } ? KnownOrNever<E> : never;
 type FieldR<F> = F extends { readonly _requirements?: () => infer R } ? KnownOrNever<R> : never;
+type FieldErrS<F> = F extends { readonly _errorSchema?: () => infer S } ? KnownOrNever<S> : never;
 type UnwrapElement<T> = [NonNullable<T>] extends [readonly (infer E)[]]
   ? NonNullable<E>
   : NonNullable<T>;
@@ -102,15 +105,30 @@ export type NodeR<T> = [NodeFieldDefs<T>] extends [never]
       | { [K in keyof NodeFieldDefs<T>]: FieldR<NodeFieldDefs<T>[K]> }[keyof NodeFieldDefs<T>]
       | { [K in keyof T & string]: NodeR<UnwrapElement<T[K]>> }[keyof T & string];
 
-/** Selection-independent field error union, mirror of {@link NodeR}. Not yet
- * part of any signature: the walker does not fail operations on field errors
- * today, so surfacing this in `E` would claim failures that cannot happen.
- * The plain-data walker rework wires it in. */
+/** Selection-independent field error union, mirror of {@link NodeR}: a
+ * field's typed failure fails the whole operation (strict walk semantics),
+ * so it belongs to `execute`'s error channel alongside the resolver's E. */
 export type NodeE<T> = [NodeFieldDefs<T>] extends [never]
   ? never
   :
       | { [K in keyof NodeFieldDefs<T>]: FieldE<NodeFieldDefs<T>[K]> }[keyof NodeFieldDefs<T>]
       | { [K in keyof T & string]: NodeE<UnwrapElement<T[K]>> }[keyof T & string];
+
+/**
+ * The fallible-but-undeclared field error union reachable from a node type:
+ * fields whose resolver can fail (`E` not `never`) but that declared no
+ * `error` schema. Feeds {@link MissingErrorSchemas} so the wire boundaries
+ * reject domains whose field failures cannot round-trip.
+ */
+type NodeUndeclaredE<T> = [NodeFieldDefs<T>] extends [never]
+  ? never
+  :
+      | {
+          [K in keyof NodeFieldDefs<T>]: [FieldErrS<NodeFieldDefs<T>[K]>] extends [never]
+            ? FieldE<NodeFieldDefs<T>[K]>
+            : never;
+        }[keyof NodeFieldDefs<T>]
+      | { [K in keyof T & string]: NodeUndeclaredE<UnwrapElement<T[K]>> }[keyof T & string];
 
 /**
  * The full requirement type of an operation: the resolver's `R` plus the
@@ -119,8 +137,14 @@ export type NodeE<T> = [NodeFieldDefs<T>] extends [never]
  */
 export type OperationR<Op> = ExtractR<Op> | NodeR<UnwrapElement<ExtractType<Op>>>;
 
+/**
+ * The full failure type of an operation: the resolver's `E` plus the declared
+ * failures of every computed field reachable from its root type.
+ */
+export type OperationE<Op> = ExtractE<Op> | NodeE<UnwrapElement<ExtractType<Op>>>;
+
 export type AllE<Ops extends Record<string, AnyOperationDef>> = {
-  [K in keyof Ops]: ExtractE<Ops[K]>;
+  [K in keyof Ops]: OperationE<Ops[K]>;
 }[keyof Ops];
 export type AllR<Ops extends Record<string, AnyOperationDef>> = {
   [K in keyof Ops]: OperationR<Ops[K]>;
@@ -180,15 +204,15 @@ export type ValidateBindConfig<
 
 type BindMethod<Op, S, Provided, ProvidedE, ProvidedR> = [ExtractArgs<Op>] extends [undefined]
   ? () => Effect.Effect<
-      DomainRootResultOf<ExtractType<Op>, S>,
-      ExtractE<Op> | ProvidedE,
+      DomainRootSelectedOf<ExtractType<Op>, S>,
+      OperationE<Op> | ProvidedE,
       Exclude<OperationR<Op>, Provided> | ProvidedR
     >
   : (
       args: ExtractArgs<Op>,
     ) => Effect.Effect<
-      DomainRootResultOf<ExtractType<Op>, S>,
-      ExtractE<Op> | ProvidedE,
+      DomainRootSelectedOf<ExtractType<Op>, S>,
+      OperationE<Op> | ProvidedE,
       Exclude<OperationR<Op>, Provided> | ProvidedR
     >;
 
@@ -196,15 +220,15 @@ type BindSubscriptionMethod<Op, S, Provided, ProvidedE, ProvidedR> = [ExtractArg
   undefined,
 ]
   ? () => Stream.Stream<
-      DomainRootResultOf<ExtractType<Op>, S>,
-      ExtractE<Op> | ProvidedE,
+      DomainRootSelectedOf<ExtractType<Op>, S>,
+      OperationE<Op> | ProvidedE,
       Exclude<OperationR<Op>, Provided> | ProvidedR
     >
   : (
       args: ExtractArgs<Op>,
     ) => Stream.Stream<
-      DomainRootResultOf<ExtractType<Op>, S>,
-      ExtractE<Op> | ProvidedE,
+      DomainRootSelectedOf<ExtractType<Op>, S>,
+      OperationE<Op> | ProvidedE,
       Exclude<OperationR<Op>, Provided> | ProvidedR
     >;
 
@@ -290,68 +314,52 @@ export interface Execution<A> {
 type NullishOf<T> = Extract<T, null | undefined>;
 type HasNullish<T> = [NullishOf<T>] extends [never] ? false : true;
 type NonNullish<T> = Exclude<T, null | undefined>;
-type ResultFieldValue<T, K extends PropertyKey> = T extends unknown
+type SelectedFieldValue<T, K extends PropertyKey> = T extends unknown
   ? K extends keyof T
     ? Exclude<T[K], undefined>
     : undefined
   : never;
 
-type SelectionResult<T, Sel> = Sel extends { readonly select: infer Sub }
+// Projection results are plain data: selected scalars keep their raw types,
+// sub-selected objects narrow to their selection, and nullish values in
+// sub-selected positions normalize to `null` (the walker's plain-data rule).
+type SelectedField<T, Sel> = Sel extends { readonly select: infer Sub }
   ? HasNullish<T> extends true
-    ? [NonNullish<T>] extends [readonly (infer E)[]]
-      ? Result.Result<Option.None<never> | Array<RootElementResult<E, Sub>>, unknown>
-      : Result.Result<Option.None<never> | DomainResultOf<NonNullish<T>, Sub>, unknown>
-    : [NonNullable<T>] extends [readonly (infer E)[]]
-      ? Result.Result<Array<RootElementResult<E, Sub>>, unknown>
-      : Result.Result<DomainResultOf<NonNullish<T>, Sub>, unknown>
-  : Result.Result<T, unknown>;
-
-type NarrowField<T, Sel> = Sel extends { readonly select: infer Sub }
-  ? [NonNullable<T>] extends [readonly (infer E)[]]
-    ? Array<DomainNarrowBySelection<E, Sub>>
-    : DomainNarrowBySelection<NonNullable<T>, Sub>
+    ? null | SelectedSub<NonNullish<T>, Sub>
+    : SelectedSub<NonNullish<T>, Sub>
   : T;
 
-type WrapResult<T> = [NonNullable<T>] extends [readonly (infer E)[]]
-  ? [E] extends [Record<string, any>]
-    ? Result.Result<Array<DomainResultTree<E>>, unknown>
-    : Result.Result<Array<E>, unknown>
-  : [NonNullable<T>] extends [Record<string, any>]
-    ? Result.Result<DomainResultTree<NonNullable<T>>, unknown>
-    : Result.Result<T, unknown>;
+type SelectedSub<T, Sub> = [T] extends [readonly (infer E)[]]
+  ? Array<SelectedElement<E, Sub>>
+  : DomainSelectedOf<T, Sub>;
 
-export type DomainResultOf<T, S> = {
-  -readonly [K in keyof S & UnionKeys<T>]-?: SelectionResult<ResultFieldValue<T, K>, S[K]>;
+type SelectedElement<E, Sub> =
+  HasNullish<E> extends true
+    ? null | SelectedSub<NonNullish<E>, Sub>
+    : SelectedSub<NonNullish<E>, Sub>;
+
+export type DomainSelectedOf<T, S> = {
+  -readonly [K in keyof S & UnionKeys<T>]-?: SelectedField<SelectedFieldValue<T, K>, S[K]>;
 };
 
-type RootElementResult<E, S> =
+type RootElementSelected<E, S> =
   HasNullish<E> extends true
-    ? Option.None<never> | DomainRootResultOf<NonNullish<E>, S>
-    : DomainRootResultOf<E, S>;
+    ? null | DomainRootSelectedOf<NonNullish<E>, S>
+    : DomainRootSelectedOf<E, S>;
 
-export type DomainRootResultOf<T, S> =
+export type DomainRootSelectedOf<T, S> =
   HasNullish<T> extends true
-    ? Option.None<never> | DomainRootResultOf<NonNullish<T>, S>
+    ? null | DomainRootSelectedOf<NonNullish<T>, S>
     : [NonNullish<T>] extends [readonly (infer E)[]]
       ? [NonNullish<E>] extends [Record<string, any>]
-        ? Array<RootElementResult<E, S>>
+        ? Array<RootElementSelected<E, S>>
         : T
       : HasArrayMember<T> extends true
         ? T
         : [NonNullish<T>] extends [Record<string, any>]
-          ? DomainResultOf<NonNullish<T>, S>
+          ? DomainSelectedOf<NonNullish<T>, S>
           : T;
 
-export type DomainNarrowBySelection<T, S> = {
-  -readonly [K in keyof S & keyof T]-?: NarrowField<Exclude<T[K], undefined>, S[K]>;
-};
-
-export type DomainResultTree<T> = {
-  -readonly [K in keyof T]-?: WrapResult<Exclude<T[K], undefined>>;
-};
-
 export type ExecuteConfig<T, Args, S> = DomainExecuteConfig<T, Args, S>;
-export type ResultOf<T, S> = DomainResultOf<T, S>;
-export type RootResultOf<T, S> = DomainRootResultOf<T, S>;
-export type NarrowBySelection<T, S> = DomainNarrowBySelection<T, S>;
-export type ResultTree<T> = DomainResultTree<T>;
+export type SelectedOf<T, S> = DomainSelectedOf<T, S>;
+export type RootSelectedOf<T, S> = DomainRootSelectedOf<T, S>;

@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Result, Schema, SchemaAST } from "effect";
+import { Context, Effect, Layer, Schema, SchemaAST } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Ast, Domain, node, operation, unionDiscriminator } from "../src/index.ts";
 
@@ -90,8 +90,8 @@ describe("Domain.erase", () => {
         args: { who: "world" },
         select: { echo: true },
       }) as Effect.Effect<unknown>,
-    )) as { echo: Result.Result<string> };
-    expect(Result.getOrThrow(result.echo)).toBe("hi world");
+    )) as { echo: string };
+    expect(result.echo).toBe("hi world");
   });
 
   it("erases a provided graph, and rejects an unprovided one at compile time", async () => {
@@ -111,8 +111,8 @@ describe("Domain.erase", () => {
     const erased = Domain.erase(g.provide(Layer.succeed(Greeter)({ greeting: "yo" })));
     const result = (await Effect.runPromise(
       erased.execute("greet", { select: { echo: true } }) as Effect.Effect<unknown>,
-    )) as { echo: Result.Result<string> };
-    expect(Result.getOrThrow(result.echo)).toBe("yo");
+    )) as { echo: string };
+    expect(result.echo).toBe("yo");
   });
 });
 

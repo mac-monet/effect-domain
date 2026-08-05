@@ -1,4 +1,4 @@
-import { Context, Effect, Option, Result, Schema, Stream } from "effect";
+import { Context, Effect, Schema, Stream } from "effect";
 import { describe, expectTypeOf, it } from "vite-plus/test";
 import { Domain, field, node, operation, subscription } from "../src/index.ts";
 import type { SelectionFor } from "../src/index.ts";
@@ -48,30 +48,15 @@ describe("Unit 7: typed selections and NodeType", () => {
     expectTypeOf<"fullName">().toMatchTypeOf<Keys>();
   });
 
-  it("NarrowBySelection excludes unselected fields", () => {
-    type Narrowed = Domain.NarrowBySelection<{ id: string; name: string }, { id: true }>;
+  it("SelectedOf excludes unselected fields", () => {
+    type Narrowed = Domain.SelectedOf<{ id: string; name: string }, { id: true }>;
     expectTypeOf<Narrowed>().toEqualTypeOf<{ id: string }>();
   });
 
-  it("NarrowBySelection recurses into sub-selections", () => {
+  it("SelectedOf recurses into sub-selections", () => {
     type T = { id: string; profile: { bio: string; age: number } };
-    type Narrowed = Domain.NarrowBySelection<T, { id: true; profile: { select: { bio: true } } }>;
+    type Narrowed = Domain.SelectedOf<T, { id: true; profile: { select: { bio: true } } }>;
     expectTypeOf<Narrowed>().toEqualTypeOf<{ id: string; profile: { bio: string } }>();
-  });
-
-  it("ResultTree wraps scalar fields in Result", () => {
-    type Tree = Domain.ResultTree<{ id: string; count: number }>;
-    expectTypeOf<Tree>().toEqualTypeOf<{
-      id: Result.Result<string, unknown>;
-      count: Result.Result<number, unknown>;
-    }>();
-  });
-
-  it("ResultTree recurses into object fields", () => {
-    type Tree = Domain.ResultTree<{ profile: { bio: string } }>;
-    expectTypeOf<Tree>().toEqualTypeOf<{
-      profile: Result.Result<{ bio: Result.Result<string, unknown> }, unknown>;
-    }>();
   });
 
   it("execute() return type reflects selection", () => {
@@ -80,10 +65,7 @@ describe("Unit 7: typed selections and NodeType", () => {
       select: { id: true, fullName: true },
     });
     type R = typeof result extends Effect.Effect<infer A, any, any> ? A : never;
-    expectTypeOf<R>().toEqualTypeOf<{
-      id: Result.Result<string, unknown>;
-      fullName: Result.Result<string, unknown>;
-    }>();
+    expectTypeOf<R>().toEqualTypeOf<{ id: string; fullName: string }>();
   });
 
   it("execute() excludes unselected fields from result type", () => {
@@ -92,7 +74,7 @@ describe("Unit 7: typed selections and NodeType", () => {
       select: { id: true },
     });
     type R = typeof result extends Effect.Effect<infer A, any, any> ? A : never;
-    expectTypeOf<R>().toEqualTypeOf<{ id: Result.Result<string, unknown> }>();
+    expectTypeOf<R>().toEqualTypeOf<{ id: string }>();
   });
 
   it("execute() requires args for operations with args schemas", () => {
@@ -116,10 +98,7 @@ describe("Unit 7: typed selections and NodeType", () => {
       select: { id: true, fullName: true },
     });
     type R = typeof result extends Stream.Stream<infer A, any, any> ? A : never;
-    expectTypeOf<R>().toEqualTypeOf<{
-      id: Result.Result<string, unknown>;
-      fullName: Result.Result<string, unknown>;
-    }>();
+    expectTypeOf<R>().toEqualTypeOf<{ id: string; fullName: string }>();
   });
 
   it("types bind as one-shot operations and bindSubscriptions as subscriptions", () => {
@@ -160,29 +139,28 @@ describe("Unit 7: typed selections and NodeType", () => {
     });
   });
 
-  it("ResultOf handles nested sub-selections", () => {
+  it("SelectedOf handles nested sub-selections", () => {
     type T = { id: string; profile: { bio: string; age: number } };
-    type R = Domain.ResultOf<T, { id: true; profile: { select: { bio: true } } }>;
-    expectTypeOf<R>().toEqualTypeOf<{
-      id: Result.Result<string, unknown>;
-      profile: Result.Result<{ bio: Result.Result<string, unknown> }, unknown>;
-    }>();
+    type R = Domain.SelectedOf<T, { id: true; profile: { select: { bio: true } } }>;
+    expectTypeOf<R>().toEqualTypeOf<{ id: string; profile: { bio: string } }>();
   });
 
-  it("ResultOf handles array sub-selections", () => {
+  it("SelectedOf handles array sub-selections", () => {
     type T = { items: Array<{ id: string; name: string }> };
-    type R = Domain.ResultOf<T, { items: { select: { id: true } } }>;
-    expectTypeOf<R>().toEqualTypeOf<{
-      items: Result.Result<Array<{ id: Result.Result<string, unknown> }>, unknown>;
-    }>();
+    type R = Domain.SelectedOf<T, { items: { select: { id: true } } }>;
+    expectTypeOf<R>().toEqualTypeOf<{ items: Array<{ id: string }> }>();
   });
 
-  it("ResultOf models null as Option.None for sub-selected fields", () => {
+  it("SelectedOf models null as null for sub-selected fields", () => {
     type T = { profile: { bio: string } | null };
-    type R = Domain.ResultOf<T, { profile: { select: { bio: true } } }>;
-    expectTypeOf<R>().toEqualTypeOf<{
-      profile: Result.Result<Option.None<never> | { bio: Result.Result<string, unknown> }, unknown>;
-    }>();
+    type R = Domain.SelectedOf<T, { profile: { select: { bio: true } } }>;
+    expectTypeOf<R>().toEqualTypeOf<{ profile: null | { bio: string } }>();
+  });
+
+  it("SelectedOf preserves null as-is for scalar selections", () => {
+    type T = { name: string | null };
+    type R = Domain.SelectedOf<T, { name: true }>;
+    expectTypeOf<R>().toEqualTypeOf<{ name: string | null }>();
   });
 
   it("field requirements and errors reach the type level through NodeMeta", () => {
@@ -238,13 +216,5 @@ describe("Unit 7: typed selections and NodeType", () => {
     const eff = g.execute("getTimed", { select: { stampedAt: true } });
     type ER = typeof eff extends Effect.Effect<any, any, infer R> ? R : never;
     expectTypeOf<ER>().toEqualTypeOf<Clock | Fmt>();
-  });
-
-  it("ResultOf preserves null as-is for scalar selections", () => {
-    type T = { name: string | null };
-    type R = Domain.ResultOf<T, { name: true }>;
-    expectTypeOf<R>().toEqualTypeOf<{
-      name: Result.Result<string | null, unknown>;
-    }>();
   });
 });

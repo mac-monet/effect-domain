@@ -1,4 +1,4 @@
-import { Effect, Layer, Result, Schema, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { describe, expect, it } from "vite-plus/test";
@@ -91,14 +91,14 @@ describe("Domain binding", () => {
     );
     const decoded = Effect.runSync(
       Schema.decodeUnknownEffect(domain.responseSchema("getUser", userSelect))({
-        id: { _tag: "Success", success: "1" },
-        fullName: { _tag: "Success", success: "Ada Lovelace" },
+        id: "1",
+        fullName: "Ada Lovelace",
       }),
-    ) as Record<string, Result.Result<string, unknown>>;
+    ) as Record<string, string>;
 
     expect(args).toEqual({ firstName: "Ada", lastName: "Lovelace" });
     expect(select).toEqual(userSelect);
-    expect(Result.getOrThrow(decoded.fullName)).toBe("Ada Lovelace");
+    expect(decoded.fullName).toBe("Ada Lovelace");
   });
 
   it("composes domain-backed operation services with native HttpApiBuilder.group", () => {
@@ -142,12 +142,9 @@ describe("Domain binding", () => {
         new Request("http://localhost/users/1"),
       );
       expect(response.status).toBe(200);
-      const body = (await response.json()) as Record<
-        string,
-        { readonly _tag: string; readonly success: string }
-      >;
-      expect(body.id.success).toBe("1");
-      expect(body.fullName.success).toBe("Alice Anderson");
+      const body = (await response.json()) as Record<string, string>;
+      expect(body.id).toBe("1");
+      expect(body.fullName).toBe("Alice Anderson");
     } finally {
       await dispose();
     }
@@ -256,18 +253,18 @@ describe("Domain binding", () => {
     );
 
     expect(direct).toHaveLength(2);
-    expect(Result.getOrThrow(direct[0].value)).toBe(3);
-    expect(Result.getOrThrow(direct[0].doubled)).toBe(6);
-    expect(Result.getOrThrow(direct[1].value)).toBe(4);
-    expect(Result.getOrThrow(projected[0].value)).toBe(7);
-    expect(Result.getOrThrow(projected[0].doubled)).toBe(14);
+    expect(direct[0].value).toBe(3);
+    expect(direct[0].doubled).toBe(6);
+    expect(direct[1].value).toBe(4);
+    expect(projected[0].value).toBe(7);
+    expect(projected[0].doubled).toBe(14);
   });
 
   it("propagates domain stream failures through the HTTP stream channel", async () => {
     const counters = streamGraph.bindSubscriptions({
       failCounters: { select: counterSelect },
     });
-    const seen: Array<Record<string, Result.Result<number, unknown>>> = [];
+    const seen: Array<Record<string, number>> = [];
 
     const exit = await Effect.runPromiseExit(
       Stream.runForEach(counters.failCounters(), (item) =>
@@ -278,7 +275,7 @@ describe("Domain binding", () => {
     );
 
     expect(seen).toHaveLength(1);
-    expect(Result.getOrThrow(seen[0].doubled)).toBe(2);
+    expect(seen[0].doubled).toBe(2);
     expect(exit._tag).toBe("Failure");
   });
 
@@ -286,7 +283,7 @@ describe("Domain binding", () => {
     const counters = streamGraph.bindSubscriptions({
       failCountersWithError: { select: counterSelect },
     });
-    const seen: Array<Record<string, Result.Result<number, unknown>>> = [];
+    const seen: Array<Record<string, number>> = [];
 
     const exit = await Effect.runPromiseExit(
       Stream.runForEach(counters.failCountersWithError(), (item) =>
@@ -297,7 +294,7 @@ describe("Domain binding", () => {
     );
 
     expect(seen).toHaveLength(1);
-    expect(Result.getOrThrow(seen[0].doubled)).toBe(2);
+    expect(seen[0].doubled).toBe(2);
     expect(exit._tag).toBe("Failure");
   });
 });

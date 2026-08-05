@@ -10,7 +10,7 @@ This library aims to be a reference-quality Effect library — immaculate code q
 
 **Immaculate code quality.** Every line should be intentional. No dead code, no half-finished abstractions, no "good enough for now" shortcuts. The library is small enough that every corner can be polished. When in doubt, simplify.
 
-**Idiomatic Effect patterns.** Follow Effect's conventions for API design: interface + namespace declaration merging (`Domain.make`, `Domain.ResultOf`), `Option` over `null`, `Result` over try/catch, `Schema` over runtime checks, `never` for erased type channels, `NoInfer` to control inference direction. When there's a choice between a JavaScript idiom and an Effect equivalent, choose Effect.
+**Idiomatic Effect patterns.** Follow Effect's conventions for API design: interface + namespace declaration merging (`Domain.make`, `Domain.SelectedOf`), `Option` over `null`, `Result` over try/catch, `Schema` over runtime checks, `never` for erased type channels, `NoInfer` to control inference direction. When there's a choice between a JavaScript idiom and an Effect equivalent, choose Effect.
 
 **Developer experience as a feature.** The public API should require zero type assertions from consumers. Type inference should work naturally — selections constrain to valid fields, results reflect exactly what was selected, errors compose with Effect's error channel. If a consumer needs `as any` to use this library, that's a bug.
 
@@ -115,9 +115,9 @@ The engine is a graph walker:
 2. Decode args via Schema at untyped gateway boundaries
 3. Run the operation's resolver
 4. Walk the result, resolving selected computed fields recursively
-5. Return the result tree with collected errors
+5. Return the plain projected tree (or fail with the first field failure)
 
-Step 4 is the core — a recursive traversal that reads plain fields via property access, calls computed field resolvers as Effects, iterates lists (Schema AST tells it what's a list), discriminates unions via sentinel extraction from the AST, and isolates each field resolution so one failure doesn't short-circuit siblings.
+Step 4 is the core — a recursive traversal that reads plain fields via property access, calls computed field resolvers as Effects, iterates lists (Schema AST tells it what's a list), discriminates unions via sentinel extraction from the AST, with field resolutions running concurrently; a field's typed failure fails the operation, a defect dies.
 
 ## What The Engine Does NOT Do
 
@@ -157,8 +157,7 @@ src/
 │   ├── analyze.ts       # selection analysis (depth / field counts)
 │   └── schema.ts        # runtime selection codec derivation
 ├── response/
-│   ├── codec.ts         # response codec derivation
-│   └── annotate-paths.ts  # flatten a result tree into path entries
+│   └── codec.ts         # response codec derivation
 └── schema/
     ├── ast.ts           # shared Schema AST helpers (incl. canonicalizing unwrapType)
     ├── sentinels.ts     # union-member sentinel extraction + candidate index
@@ -225,9 +224,9 @@ Streams (`subscribe`/`dispatchSubscription`) deliberately do not accept the flag
 
 **Sentinel-based union discrimination.** Rather than hardcoding `_tag`, the walker extracts the discriminator key from the union AST by finding the common sentinel across all members. Results are cached per union AST node. This correctly handles unions discriminated by any key. The sentinel extraction and candidate matching live in `src/schema/sentinels.ts` — a faithful port of Effect's own union-candidate index, owned locally because upstream made that machinery `@internal` in 4.0.0-beta.97. The library depends only on public `effect` APIs.
 
-**Absence is `Option`, not `null`.** `walkNode` expects a non-null value — its contract is "traverse this object and resolve its fields." Null checks happen at the boundary in `resolveValue`, which short-circuits to `Option.none()` before recursing. This avoids fabricating result trees for fields that were never resolved — if a parent is null, the caller gets `Option.none()` for the parent key, not an object of null children. Adapters then map `Option.none()` to their protocol's representation (GraphQL puts `null` in the data tree, REST omits the key, RPC uses optional fields). Using `Option` instead of `null` makes absence explicit and type-safe — consumers pattern-match rather than null-check, and the distinction between "absent" and "present" is preserved without conflating JavaScript's `null` and `undefined`.
+**Absence is `null`.** `walkNode` expects a non-null value — its contract is "traverse this object and resolve its fields." Null checks happen at the boundary in `resolveValue`, which short-circuits to `null` before recursing. This avoids fabricating result trees for fields that were never resolved — if a parent is null, the caller gets `null` for the parent key, not an object of null children. Plain `null` is JSON-native, matches GraphQL's data-tree representation, and keeps the wire payload free of wrapper objects; a projection is data, not a value-level API.
 
-**No path tracking in the walker.** The walker doesn't track traversal paths — `WalkContext` carries only `concurrency`, the registry, and an optional read-set collector. Paths are inferable from the nested result tree structure. Consumers that traverse the result tree directly (workflow engines, pipelines, direct callers) already have the nested structure. For consumers that need a flat view with paths (protocol adapters building error arrays, structured logging), an `annotatePaths` utility flattens the result tree into `Array<{ path, result }>`. This keeps the walker minimal while avoiding path-reconstruction boilerplate.
+**No path tracking in the walker.** The walker doesn't track traversal paths — `WalkContext` carries only `concurrency`, the registry, and an optional read-set collector. Under strict failure semantics a walk produces either the whole plain tree or one failure, so there is no per-field error array to annotate with paths; paths remain inferable from the nested structure for consumers that need them.
 
 **Output aliasing via `alias`; multi-alias via array form.** Selection keys are strict — they must name an actual field on the parent AST. To rename the output key, set `alias`: `{ greeting: { alias: "hi" } }` produces `{ hi: ... }` in the result tree. To select the same field multiple times (e.g., once with each role), use the array form: `{ users: [{ args: { role: "user" } }, { args: { role: "admin" }, alias: "admins" }] }`. The walker dispatches each entry independently and writes each to its own output key. Multi-alias is rejected at decode-time when array entries would collide on output (more than one missing `alias`, or duplicate `alias` values).
 
@@ -269,36 +268,26 @@ Implementation notes: `type` in batched fields is the returned field schema. Use
 
 **Raw-AST discovery preserves encodings.** Registry discovery recurses along the _raw_ AST wherever its shape matches the type-side classification, because `toType` strips encodings irrecoverably and sentinels must be extracted from the encoded side (that is what runtime union matching discriminates against). The unwrapped type-side AST serves only as the canonical map key.
 
-## Typed Selections and Result Trees
+## Typed Selections and Plain Projections
 
-Selections and results are fully typed. Root outputs are generic: object roots are projected as result trees, array-of-object roots project each element, nullable object roots return `Option.none()` when absent, and scalar/scalar-array roots are returned directly with no selection.
+Selections and results are fully typed. Projection output is **plain data**: the walker emits exactly the selected tree with raw values — no per-field wrappers. Root outputs are generic: object roots project to narrowed trees, array-of-object roots project each element, nullable object roots resolve to `null` when absent, and scalar/scalar-array roots are returned directly with no selection.
 
-**`NodeType<S, Computed>`** merges a struct's data fields with computed field output types. `node()` returns a schema whose `Type` includes both, so consumers see all selectable fields — data and computed — as a single type.
+**`NodeType<S, Computed>`** merges a struct's data fields with computed field output types. `node()` returns a schema whose `Type` includes both, so consumers see all selectable fields — data and computed — as a single type. A symbol-keyed phantom (`NodeMeta`) additionally carries the field-def record so each field's error and requirement types survive to the type level (`NodeE` / `NodeR`).
 
 **`SelectionFor<T>`** constrains selections to valid field names on `T`. Scalar fields accept `true`. Object and array-of-object fields accept `true | { select?: SelectionFor<Element> }`. Invalid keys are type errors.
 
 **`RootSelectionFor<T>`** constrains operation-root selections. It differs from `SelectionFor<T>` for arrays: `RootSelectionFor<User[]>` selects `User` fields, not array properties. Scalars have `RootSelectionFor<T> = never`, so typed callers cannot pass `select`.
 
-**`NarrowBySelection<T, Sel>`** picks only the fields present in `Sel` from `T`. When a field uses `{ select: Sub }`, the value type is recursively narrowed. Unselected fields are excluded from the result type.
-
-**`ResultTree<T>`** wraps each field in `Result.Result<..., unknown>`. Recurses into nested objects and arrays of objects. Scalars and scalar arrays remain unwrapped inside the Result.
-
-The node-field pipeline:
-
-```
-SelectionFor<OpType>  →  constrains what you can select
-NarrowBySelection<OpType, Sel>  →  picks what you selected
-ResultTree<Narrowed>  →  wraps each field in Result
-```
+**`SelectedOf<T, Sel>`** picks only the fields present in `Sel` from `T`. When a field uses `{ select: Sub }`, the value type is recursively narrowed; nullish values in sub-selected positions are `null`. Unselected fields are excluded from the result type. **`RootSelectedOf<T, Sel>`** generalizes it across root shapes (arrays, nullables, opaque roots).
 
 The result shape per field:
 
-- **Scalar**: `Result.Result<string, unknown>` (or number, boolean, etc.)
-- **Object with sub-selection**: `Result.Result<ResultTree<Narrowed>, unknown>` (nests recursively)
-- **Array with sub-selection**: `Result.Result<Array<ResultTree<Narrowed>>, unknown>`
-- **Array without sub-selection**: `Result.Result<Array<T>, unknown>` (preserved as-is)
+- **Scalar**: the raw value (`string`, `number`, `string | null`, …)
+- **Object with sub-selection**: `SelectedOf<Element, Sub>` (nests recursively; `null` when the value is nullish)
+- **Array with sub-selection**: `Array<SelectedOf<Element, Sub>>`
+- **Array without sub-selection**: the raw array, preserved as-is
 
-Each field resolves independently — a `Result.Failure` on one field doesn't affect siblings. Operation roots are not field-level results: root arrays and root scalars are not wrapped in `Result`. Field-level results inside projected objects remain wrapped.
+**Failure semantics are strict**: a computed field's typed failure fails the whole operation through the Effect error channel — `execute`'s `E` is the resolver's declared failures plus the `E` of every reachable computed field (`OperationE`). There is no partially-succeeded data tree; a failure means no result. Field defects die, exactly like resolver defects.
 
 ## The Gateway Contract
 
@@ -319,19 +308,19 @@ domain.invocationKey({ name, args, select }, { bytes }):  string  // canonical, 
 
 These primitives let any consumer — HTTP, RPC, GraphQL, queue worker, sync engine, workflow orchestrator — decode untyped wire input, prepare and inspect invocations before execution, dispatch, and produce idempotency / cache keys without casts and without reinventing the loop.
 
-A third Schema, `domain.responseSchema(name, validatedSelection)`, is opt-in for typed clients that want to rehydrate `Result` prototypes from the wire as a single Schema. Most consumers don't need it: server-side encoding works without it (the walker emits typed values), and per-leaf rehydration is covered by a small `Schema.Result` helper. Response schemas are memoized by operation AST and canonicalized selection, so adapters should build them for fixed or already-validated selections; dynamic gateways should not synthesize them for unbounded user-controlled selections without their own cache/lifecycle policy.
+A third Schema, `domain.responseSchema(name, validatedSelection)`, is opt-in for typed clients that want to validate/decode the plain projected tree from the wire as a single Schema. Most consumers don't need it: the payload is plain JSON-shaped data. Response schemas are memoized by operation AST and canonicalized selection, so adapters should build them for fixed or already-validated selections; dynamic gateways should not synthesize them for unbounded user-controlled selections without their own cache/lifecycle policy.
 
 The dispatch methods wrap the canonical request shape and keep all expected outcomes as `Result` values:
 
 ```ts
 domain.dispatch({ name, args, select }):
-  Effect<Result<ResultTree<…>, GatewayError | OperationError<E_of_op>>, never, R_of_op>
+  Effect<Result<SelectedOf<…>, GatewayError | OperationError<E_of_op>>, never, R_of_op>
 
 domain.prepareDispatch({ name, args, select }):
   Effect<PreparedDispatch, GatewayError, R_of_op>
 
 domain.dispatchSubscription({ name, args, select }):
-  Stream<Result<ResultTree<…>, GatewayError | OperationError<E_of_op>>, never, R_of_op>
+  Stream<Result<SelectedOf<…>, GatewayError | OperationError<E_of_op>>, never, R_of_op>
 ```
 
 `prepareDispatch` is the production gateway path when a transport needs to validate and inspect a request before running resolvers. It decodes args/select, computes `invocationKey`, and exposes selection analysis so adapters can enforce auth, allowlists, depth/field limits, caching, rate limits, or audit policy before calling `prepared.execute(...)`. Invocation keys default to 8 bytes / 16 hex chars; pass `{ bytes: 16 }` or `{ bytes: 32 }` to `prepareDispatch` or `domain.invocationKey` for durable/global idempotency stores.
@@ -356,15 +345,11 @@ The two contracts coexist. In-process callers continue to use `execute()`/`subsc
 
 ## Error Handling
 
-Each field resolver is wrapped with `Effect.result()` before being added to the effects record, capturing success or failure into `Result.Success<Value>` or `Result.Failure<Error>`. The effects record is then resolved with `Effect.all` — since every entry already has error type `never`, no field short-circuits another. The walker returns the full result record; the caller/adapter decides how to format errors.
+The walker has no error handling logic of its own: field resolver effects run inside `Effect.all`, so a field's typed failure propagates through the Effect error channel and fails the whole operation (strict semantics — first failure wins, no partial tree). Defects die.
 
-The walker has no error handling logic. No `Ref` for error accumulation, no custom error types. Effect's native `Result` does the work.
+At the wire boundary, `liftBoundaryToResult` wraps that failure into `OperationError<E>` inside the dispatch `Result`, and the failure codec is the operation's declared `error` schema unioned with every reachable field's declared `error` schema (`field({ error })`). A fallible field without a declared schema cannot round-trip its failures; `Domain.MissingErrorSchemas` turns that omission into a compile error at wire boundaries, exactly as for operations.
 
-Adapters post-process the result record:
-
-- **GraphQL**: extract `Result.Failure` entries into the `errors` array with paths, put `null` in data tree, apply null bubbling
-- **RPC**: map `Result.Failure` into typed error channel
-- **Direct call**: caller pattern-matches on `Result` per field
+Adapters therefore see exactly two outcomes per dispatch: plain data, or one typed failure with its operation context — the same model GraphQL's `data`/`errors` split and RPC error channels expect.
 
 ## Subscriptions
 
@@ -452,7 +437,7 @@ Built for Effect v4 from day one — no v3 migration path, and v3 patterns do no
 - `domain.dispatch({ name, args, select }, options?)` — validate args/select and dispatch immediately with boundary errors and operation E in the `Result` value channel; `options.reads` wraps successes in the `{ result, reads }` envelope.
 - `Domain.orFail(domain.dispatch(...))` — move `OperationError<E>` into the Effect failure channel while leaving boundary errors as `Result.failure`.
 - `domain.dispatchSubscription(...)` / `Domain.orFailStream(...)` — streaming siblings for subscription operations.
-- `domain.responseSchema(name, validatedSelection)` — opt-in: runtime Schema for the full `ResultTree` shape. Only needed for fixed/validated selections and typed clients wanting whole-tree rehydration; per-leaf rehydration is solved by a small `Schema.Result` helper.
+- `domain.responseSchema(name, validatedSelection)` — opt-in: runtime Schema for the plain projected tree. Only needed for fixed/validated selections and typed clients wanting whole-tree validation.
 - `domain.dispatchResultSchema(name, validatedSelection, operationErrorSchema)` — opt-in: runtime Schema for the full `dispatch` Result wire shape.
 
 **Composition:**
@@ -462,15 +447,13 @@ Built for Effect v4 from day one — no v3 migration path, and v3 patterns do no
 
 **Utilities:**
 
-- `annotatePaths(resultTree)` — flatten result tree into `Array<{ path, result }>`
 - `buildRegistry(ops)` — construct a `NodeRegistry` standalone (adapters that need the reified model without a `Domain` instance)
 
 **Types (under `Domain` namespace):**
 
-- `Domain.ResultOf<T, S>` — result tree type for a given type and selection
-- `Domain.RootResultOf<T, S>` — operation-root result type for generic root outputs
+- `Domain.SelectedOf<T, S>` — plain projected tree type for a given type and selection
+- `Domain.RootSelectedOf<T, S>` — operation-root projection type for generic root outputs
 - `Domain.NarrowBySelection<T, Sel>` — narrow result type by selection
-- `Domain.ResultTree<T>` — wrap all fields in Result
 - `DomainInstance<Ops>` — typed graph instance
 - `NodeType<S, Computed>` — merged data + computed field types
 - `SelectionFor<T>` — constrain selections to valid fields
@@ -488,11 +471,11 @@ Built for Effect v4 from day one — no v3 migration path, and v3 patterns do no
 
 **Read sets for streams.** `subscribe`/`dispatchSubscription` do not accept `reads: true` yet. Per-item read sets (each emitted item reports its own dependencies) and cumulative read sets (the subscription's dependency set grows over time) serve different consumers; the sync engine's real consumption pattern should decide before the API is fixed.
 
-**Early arg validation.** Field args are currently validated per-field during resolution, with failures isolated in `Result.Failure`. Adapters like GraphQL already validate args at the protocol level. If a future adapter needs early validation without protocol-level support, the path is: extract the "find field definition for this selection key" logic into a shared function used by both the walker and a `validateSelection` utility. This avoids duplicating the walker's traversal logic. Wait for a real consumer before building it.
+**Early arg validation.** Field args are currently validated per-field during resolution; a failed decode fails the operation. Adapters like GraphQL already validate args at the protocol level. If a future adapter needs early validation without protocol-level support, the path is: extract the "find field definition for this selection key" logic into a shared function used by both the walker and a `validateSelection` utility. This avoids duplicating the walker's traversal logic. Wait for a real consumer before building it.
 
 **Union variant selection.** Resolved: there is no `variants` selection syntax — the Effect-first alternative was chosen. The caller selects fields flat; the walker determines the concrete variant AST at runtime, resolves the selected fields that exist on the matched variant, and reports fields absent from it as `MissingOnVariant`. A GraphQL adapter handles `... on Type` → flat selection conversion itself, keeping inline-fragment shape out of the core selection model.
 
-**`MissingOnVariant` wire shape — deliberately open.** The walker currently writes `Result.succeed(undefined)` for a selected field absent from the matched variant, which conflates "absent on this variant" with "resolved to undefined" in the result tree. Whether that distinction needs a wire-visible marker (a tagged value, key omission, or a per-field annotation) is an adapter-shaped decision: GraphQL null-vs-omit semantics are the first real consumer with an opinion. Deferred until the first adapter forces it — deciding a wire format speculatively is how formats end up wrong and frozen.
+**`MissingOnVariant` wire shape — deliberately open.** The walker currently writes plain `undefined` for a selected field absent from the matched variant, which conflates "absent on this variant" with "resolved to undefined" in the projected tree. Whether that distinction needs a wire-visible marker (a tagged value, key omission, or a per-field annotation) is an adapter-shaped decision: GraphQL null-vs-omit semantics are the first real consumer with an opinion. Deferred until the first adapter forces it — deciding a wire format speculatively is how formats end up wrong and frozen.
 
 **Gateway contract evolution.** `selectionSchema`, `argsSchema`, `dispatch`, `dispatchSubscription`, `invocationKey`, `selectionsEqual`, and `responseSchema` are implemented; the rationale behind each placement is in [The Gateway Contract](#the-gateway-contract) above. Remaining open sub-questions:
 

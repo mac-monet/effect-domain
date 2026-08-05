@@ -23,10 +23,10 @@ describe("Examples: MCP adapter", () => {
       callTool("getUser", { args: { id: "1" }, select: { id: true, fullName: true } }),
     );
     expect(result.isFailure).toBe(false);
-    // Fields are individually Result-wrapped: computed fields can fail per-field.
+    // Projection results are plain data — no per-field Result wrapping.
     expect(result.result).toEqual({
-      id: { _tag: "Success", success: "1" },
-      fullName: { _tag: "Success", success: "Alice Anderson" },
+      id: "1",
+      fullName: "Alice Anderson",
     });
   });
 

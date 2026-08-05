@@ -1,4 +1,4 @@
-import { Effect, Exit, Option, Result, Schema, Stream } from "effect";
+import { Effect, Exit, Option, Schema, Stream } from "effect";
 import { RpcTest } from "effect/unstable/rpc";
 import { describe, expect, it } from "vite-plus/test";
 import { UserNotFound } from "../examples/domain.ts";
@@ -54,9 +54,9 @@ describe("Examples: dynamic typed RPC adapter", () => {
       ),
     );
     expect(users).toHaveLength(2);
-    expect(Result.getOrThrow(users[0].id)).toBe("10");
-    expect(Result.getOrThrow(users[0].fullName)).toBe("Stream One");
-    expect(Result.getOrThrow(users[1].fullName)).toBe("Stream Two");
+    expect(users[0].id).toBe("10");
+    expect(users[0].fullName).toBe("Stream One");
+    expect(users[1].fullName).toBe("Stream Two");
   });
 
   it("rejects invalid selections at compile time", () => {

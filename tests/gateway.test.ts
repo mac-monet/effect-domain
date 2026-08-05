@@ -203,9 +203,9 @@ describe("dispatch — all outcomes as Result values", () => {
       domain.dispatch({ name: "getUser", args: { id: "1" }, select: { id: true, fullName: true } }),
     );
     expect(Result.isSuccess(out)).toBe(true);
-    const tree = Result.getOrThrow(out) as Record<string, Result.Result<unknown, unknown>>;
-    expect(Result.getOrThrow(tree.id!)).toBe("1");
-    expect(Result.getOrThrow(tree.fullName!)).toBe("Alice Smith");
+    const tree = Result.getOrThrow(out) as Record<string, unknown>;
+    expect(tree.id).toBe("1");
+    expect(tree.fullName).toBe("Alice Smith");
   });
 
   it("scalar root succeeds with omitted select and returns the scalar directly", async () => {
@@ -271,11 +271,9 @@ describe("dispatch — all outcomes as Result values", () => {
     );
 
     expect(Result.isSuccess(out)).toBe(true);
-    const groups = Result.getOrThrow(out) as ReadonlyArray<
-      ReadonlyArray<Record<string, Result.Result<unknown, unknown>>>
-    >;
-    expect(Result.getOrThrow(groups[0]![0]!.id)).toBe("1");
-    expect(Result.getOrThrow(groups[0]![0]!.fullName)).toBe("Nested User");
+    const groups = Result.getOrThrow(out) as ReadonlyArray<ReadonlyArray<Record<string, unknown>>>;
+    expect(groups[0]![0]!.id).toBe("1");
+    expect(groups[0]![0]!.fullName).toBe("Nested User");
   });
 
   it("nullable nested array root concrete select projects present innermost objects", async () => {
@@ -291,11 +289,9 @@ describe("dispatch — all outcomes as Result values", () => {
     );
 
     expect(Result.isSuccess(out)).toBe(true);
-    const groups = Result.getOrThrow(out) as ReadonlyArray<
-      ReadonlyArray<Record<string, Result.Result<unknown, unknown>>>
-    >;
-    expect(Result.getOrThrow(groups[0]![0]!.id)).toBe("1");
-    expect(Result.getOrThrow(groups[0]![0]!.fullName)).toBe("Nested User");
+    const groups = Result.getOrThrow(out) as ReadonlyArray<ReadonlyArray<Record<string, unknown>>>;
+    expect(groups[0]![0]!.id).toBe("1");
+    expect(groups[0]![0]!.fullName).toBe("Nested User");
   });
 
   it("array-wrapped union root concrete select projects the runtime variant", async () => {
@@ -323,11 +319,10 @@ describe("dispatch — all outcomes as Result values", () => {
     );
 
     expect(Result.isSuccess(out)).toBe(true);
-    const rows = Result.getOrThrow(out) as ReadonlyArray<
-      Record<string, Result.Result<unknown, unknown>>
-    >;
-    expect(Result.getOrThrow(rows[0]!.meow)).toBeUndefined();
-    expect(Result.getOrThrow(rows[0]!.bark)).toBe("Rex barks");
+    const rows = Result.getOrThrow(out) as ReadonlyArray<Record<string, unknown>>;
+    // fields missing on the matched variant are plain undefined
+    expect(rows[0]!.meow).toBeUndefined();
+    expect(rows[0]!.bark).toBe("Rex barks");
   });
 
   it("mixed array-wrapped object/scalar union roots reject concrete selections", async () => {
@@ -438,8 +433,8 @@ describe("dispatch — all outcomes as Result values", () => {
       ),
     );
     expect(Result.isSuccess(out)).toBe(true);
-    const tree = Result.getOrThrow(out) as Record<string, Result.Result<unknown, unknown>>;
-    expect(Result.getOrThrow(tree.id!)).toBe("u@7");
+    const tree = Result.getOrThrow(out) as Record<string, unknown>;
+    expect(tree.id).toBe("u@7");
   });
 
   it("preserves operation R via domain.provide(layer)", async () => {
@@ -450,8 +445,8 @@ describe("dispatch — all outcomes as Result values", () => {
         .dispatch({ name: "needsTick", args: { id: "u" }, select: { id: true } }),
     );
     expect(Result.isSuccess(out)).toBe(true);
-    const tree = Result.getOrThrow(out) as Record<string, Result.Result<unknown, unknown>>;
-    expect(Result.getOrThrow(tree.id!)).toBe("u@42");
+    const tree = Result.getOrThrow(out) as Record<string, unknown>;
+    expect(tree.id).toBe("u@42");
   });
 
   it("property: arbitrary non-defecting dispatch inputs resolve as Result values", async () => {

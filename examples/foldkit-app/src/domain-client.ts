@@ -1,13 +1,9 @@
 // The client end of the wire. `Domain.wireClient` recovers exact
 // `domain.execute` typing — operation names, args, selections,
 // selection-dependent result types — from the domain itself; this file only
-// supplies the transport: POST the dispatch envelope to /rpc.
-//
-// Computed fields come back as per-field `Result` values (a field resolver
-// can fail independently of its siblings). This app selects only fields
-// whose resolvers cannot fail, so `unwrapProjection` flattens the tree to
-// plain data before it enters the Model.
-import { Effect, Result, Schema, Stream } from "effect";
+// supplies the transport: POST the dispatch envelope to /rpc. Successes are
+// plain selected data trees; failures arrive typed (UserNotFound).
+import { Effect, Schema, Stream } from "effect";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 import { Http } from "foldkit";
 import { Domain, type DispatchRequest } from "../../../src/index.ts";
@@ -32,26 +28,11 @@ const transport = {
 
 export const client = Domain.wireClient(domain, transport);
 
-const unwrapProjection = (value: unknown): unknown => {
-  if (Result.isResult(value)) {
-    if (Result.isFailure(value)) throw value.failure;
-    return unwrapProjection(value.success);
-  }
-  if (Array.isArray(value)) return value.map(unwrapProjection);
-  if (typeof value !== "object" || value === null) return value;
-  return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [key, unwrapProjection(entry)]),
-  );
-};
-
 const decoded = <A, I, E>(
   effect: Effect.Effect<unknown, E>,
   schema: Schema.Codec<A, I>,
 ): Effect.Effect<A, E | Schema.SchemaError> =>
-  effect.pipe(
-    Effect.flatMap((value) => Effect.try(() => unwrapProjection(value)).pipe(Effect.orDie)),
-    Effect.flatMap(Schema.decodeUnknownEffect(schema)),
-  );
+  effect.pipe(Effect.flatMap(Schema.decodeUnknownEffect(schema)));
 
 // One UI-facing effect per screen need: each picks its own selection, so a
 // screen fetches exactly the fields it renders.

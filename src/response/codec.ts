@@ -1,4 +1,4 @@
-import { Option, Schema, SchemaAST, SchemaTransformation } from "effect";
+import { Schema, SchemaAST } from "effect";
 import {
   arrayCodec,
   codecFromAst,
@@ -12,7 +12,6 @@ import {
 import { canonicalizeSelection } from "../invocation-key.ts";
 import type { NodeRegistry } from "../registry.ts";
 import type { RootPlan } from "../selection/projection.ts";
-import { ResultCodec } from "../schema/result.ts";
 import { isNullable, nonNullishRootAst, unwrapType } from "../schema/ast.ts";
 import {
   planSelectedNode,
@@ -152,10 +151,9 @@ function nodeToResponseSchema(
       if (field.fieldAsts.length === 0) {
         throw new Error(`responseSchema: unknown selection field "${field.entry.fieldName}"`);
       }
-      const successSchema = unionCodec(
+      fields[field.entry.outputKey] = unionCodec(
         field.fieldAsts.map((fieldAst) => fieldSuccessSchema(registry, fieldAst, field)),
       );
-      fields[field.entry.outputKey] = unsafeCoerceCodec(ResultCodec(successSchema, unknownCodec));
     }
     const built = structCodec(fields);
     realized.value = built;
@@ -191,23 +189,10 @@ function fieldSuccessSchema(
   return nodeToResponseSchema(registry, typeAst, sub);
 }
 
+// The walker normalizes nullish sub-selected values to `null` (plain data,
+// JSON-native), so the nullable slot on the wire is a bare null.
 function noneOrValueCodec(value: DynamicCodec): DynamicCodec {
-  return unionCodec([noneCodec(), value]);
-}
-
-function noneCodec(): DynamicCodec {
-  const transformation = SchemaTransformation.transform<
-    Option.None<never>,
-    { readonly _tag: "None" }
-  >({
-    decode: () => Option.none() as Option.None<never>,
-    encode: () => ({ _tag: "None" }),
-  });
-  return unsafeCoerceCodec(
-    Schema.TaggedStruct("None", {}).pipe(
-      Schema.decodeTo(Schema.Option(Schema.Never), transformation as never),
-    ),
-  );
+  return unionCodec([unsafeCoerceCodec(Schema.Null), value]);
 }
 
 function cacheKey(selection: Selection | undefined): string {

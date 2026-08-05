@@ -75,8 +75,8 @@ export interface DomainInstance<
       S
     > & { readonly reads: true },
   ): Effect.Effect<
-    DomainTypes.Execution<DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>>,
-    DomainTypes.ExtractE<Ops[K]> | ProvidedE,
+    DomainTypes.Execution<DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>>,
+    DomainTypes.OperationE<Ops[K]> | ProvidedE,
     Exclude<DomainTypes.OperationR<Ops[K]>, Provided> | ProvidedR
   >;
   execute<
@@ -90,8 +90,8 @@ export interface DomainInstance<
       S
     >,
   ): Effect.Effect<
-    DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>,
-    DomainTypes.ExtractE<Ops[K]> | ProvidedE,
+    DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
+    DomainTypes.OperationE<Ops[K]> | ProvidedE,
     Exclude<DomainTypes.OperationR<Ops[K]>, Provided> | ProvidedR
   >;
   subscribe<
@@ -105,8 +105,8 @@ export interface DomainInstance<
       S
     >,
   ): Stream.Stream<
-    DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>,
-    DomainTypes.ExtractE<Ops[K]> | ProvidedE,
+    DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
+    DomainTypes.OperationE<Ops[K]> | ProvidedE,
     Exclude<DomainTypes.OperationR<Ops[K]>, Provided> | ProvidedR
   >;
   inspect(): Inspection;
@@ -191,7 +191,7 @@ export interface DomainInstance<
     name: K,
     selection?: S,
   ): Schema.Codec<
-    DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>,
+    DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
     unknown,
     never,
     never
@@ -215,7 +215,7 @@ export interface DomainInstance<
     operationErrorSchema: F,
   ): Schema.Codec<
     Result.Result<
-      DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>,
+      DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
       GatewayError | OperationError<F["Type"]>
     >,
     unknown,
@@ -230,7 +230,7 @@ export interface DomainInstance<
     selection: S,
   ): Schema.Codec<
     Result.Result<
-      DomainTypes.DomainRootResultOf<DomainTypes.ExtractType<Ops[K]>, S>,
+      DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
       GatewayError | OperationError<DomainTypes.DeclaredErrorType<Ops[K]>>
     >,
     unknown,

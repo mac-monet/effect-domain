@@ -1,4 +1,4 @@
-import { Effect, Option, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import * as fc from "fast-check";
 import { describe, expect, it } from "vite-plus/test";
 import { domain } from "../examples/domain.ts";
@@ -16,35 +16,8 @@ function decode(schema: unknown, input: unknown): unknown {
   return Schema.decodeUnknownSync(schema as Schema.Codec<unknown>)(input);
 }
 
-function toWire(value: unknown): unknown {
-  if (Result.isResult(value)) {
-    return Result.isSuccess(value)
-      ? { _tag: "Success", success: toWire(value.success) }
-      : { _tag: "Failure", failure: value.failure };
-  }
-  if (Option.isOption(value)) {
-    return Option.isNone(value) ? { _tag: "None" } : toWire(value.value);
-  }
-  if (Array.isArray(value)) return value.map(toWire);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, toWire(child)]));
-  }
-  return value;
-}
-
-function assertLiveResults(value: unknown): void {
-  if (Result.isResult(value)) {
-    if (Result.isSuccess(value)) assertLiveResults(value.success);
-    return;
-  }
-  if (Option.isOption(value)) return;
-  if (Array.isArray(value)) {
-    for (const child of value) assertLiveResults(child);
-    return;
-  }
-  if (value !== null && typeof value === "object") {
-    for (const child of Object.values(value)) assertLiveResults(child);
-  }
+function encode(schema: unknown, value: unknown): unknown {
+  return Schema.encodeUnknownSync(schema as Schema.Codec<unknown>)(value);
 }
 
 const Profile = node("PropertyProfile", Schema.Struct({ bio: Schema.String }), {
@@ -258,7 +231,7 @@ const unionSelection = fc
   .filter((selection) => Object.keys(selection).length > 0 && hasUniqueOutputKeys(selection));
 
 describe("Domain.responseSchema", () => {
-  it("decodes selected object fields back to live Result values", async () => {
+  it("decodes selected object fields as plain data", async () => {
     const selection = decode(domain.selectionSchema("getUser"), {
       id: true,
       fullName: true,
@@ -266,30 +239,27 @@ describe("Domain.responseSchema", () => {
     const schema = domain.responseSchema("getUser", selection as Selection);
 
     const decoded = decode(schema, {
-      id: { _tag: "Success", success: "1" },
-      fullName: { _tag: "Success", success: "Alice Anderson" },
-    }) as Record<string, Result.Result<string, unknown>>;
+      id: "1",
+      fullName: "Alice Anderson",
+    }) as Record<string, string>;
 
-    expect(Result.getOrThrow(decoded.id)).toBe("1");
-    expect(Result.getOrThrow(decoded.fullName)).toBe("Alice Anderson");
+    expect(decoded.id).toBe("1");
+    expect(decoded.fullName).toBe("Alice Anderson");
   });
 
-  it("decodes root arrays of objects without wrapping the root array in Result", () => {
+  it("decodes root arrays of objects as plain arrays", () => {
     const selection = decode(domain.selectionSchema("listUsers"), {
       id: true,
       fullName: true,
     });
     const schema = domain.responseSchema("listUsers", selection as Selection);
 
-    const decoded = decode(schema, [
-      {
-        id: { _tag: "Success", success: "1" },
-        fullName: { _tag: "Success", success: "Alice Anderson" },
-      },
-    ]) as ReadonlyArray<Record<string, Result.Result<string, unknown>>>;
+    const decoded = decode(schema, [{ id: "1", fullName: "Alice Anderson" }]) as ReadonlyArray<
+      Record<string, string>
+    >;
 
     expect(Array.isArray(decoded)).toBe(true);
-    expect(Result.getOrThrow(decoded[0]!.fullName)).toBe("Alice Anderson");
+    expect(decoded[0]!.fullName).toBe("Alice Anderson");
   });
 
   it("returns scalar root schemas directly", () => {
@@ -363,15 +333,11 @@ describe("Domain.responseSchema", () => {
 
     const decoded = decode(schema, {
       _tag: "Success",
-      success: {
-        id: { _tag: "Success", success: "1" },
-      },
-    }) as Result.Result<Record<string, Result.Result<string, unknown>>, unknown>;
+      success: { id: "1" },
+    }) as { _tag: string; success: { id: string } };
 
-    expect(Result.isSuccess(decoded)).toBe(true);
-    if (Result.isSuccess(decoded)) {
-      expect(Result.getOrThrow(decoded.success.id)).toBe("1");
-    }
+    expect(decoded._tag).toBe("Success");
+    expect(decoded.success.id).toBe("1");
   });
 
   it("builds a full dispatch result schema for operation and gateway failures", () => {
@@ -391,26 +357,55 @@ describe("Domain.responseSchema", () => {
         operation: "get",
         cause: { _tag: "DispatchBoom", message: "boom" },
       },
-    }) as Result.Result<unknown, unknown>;
+    }) as { _tag: string; failure: unknown };
 
-    expect(Result.isFailure(operationFailure)).toBe(true);
-    if (Result.isFailure(operationFailure)) {
-      expect(operationFailure.failure).toBeInstanceOf(OperationError);
-      const error = operationFailure.failure as OperationError<DispatchBoom>;
-      expect(error.operation).toBe("get");
-      expect(error.cause).toBeInstanceOf(DispatchBoom);
-      expect(error.cause.message).toBe("boom");
-    }
+    expect(operationFailure._tag).toBe("Failure");
+    expect(operationFailure.failure).toBeInstanceOf(OperationError);
+    const error = operationFailure.failure as OperationError<DispatchBoom>;
+    expect(error.operation).toBe("get");
+    expect(error.cause).toBeInstanceOf(DispatchBoom);
+    expect(error.cause.message).toBe("boom");
 
     const gatewayFailure = decode(schema, {
       _tag: "Failure",
       failure: { _tag: "UnknownOperation", operation: "missing" },
-    }) as Result.Result<unknown, unknown>;
+    }) as { _tag: string; failure: unknown };
 
-    expect(Result.isFailure(gatewayFailure)).toBe(true);
-    if (Result.isFailure(gatewayFailure)) {
-      expect(gatewayFailure.failure).toBeInstanceOf(UnknownOperation);
-    }
+    expect(gatewayFailure._tag).toBe("Failure");
+    expect(gatewayFailure.failure).toBeInstanceOf(UnknownOperation);
+  });
+
+  it("unions reachable field error schemas into the dispatch failure codec", () => {
+    class FieldBoom extends Schema.TaggedErrorClass<FieldBoom>()("FieldBoom", {
+      reason: Schema.String,
+    }) {}
+    const User = node("FieldErrorUser", Schema.Struct({ id: Schema.String }), (f) => ({
+      risky: f.field({
+        type: Schema.String,
+        error: FieldBoom,
+        resolve: () => Effect.fail(new FieldBoom({ reason: "nope" })),
+      }),
+    }));
+    const g = Domain.make({
+      get: operation({
+        type: User,
+        resolve: () => Effect.succeed({ id: "1" }),
+      }),
+    });
+
+    const schema = g.dispatchResultSchemaDynamic("get", { id: true, risky: true });
+    const decoded = decode(schema, {
+      _tag: "Failure",
+      failure: {
+        _tag: "OperationError",
+        operation: "get",
+        cause: { _tag: "FieldBoom", reason: "nope" },
+      },
+    }) as { _tag: string; failure: OperationError<FieldBoom> };
+
+    expect(decoded.failure).toBeInstanceOf(OperationError);
+    expect(decoded.failure.cause).toBeInstanceOf(FieldBoom);
+    expect(decoded.failure.cause.reason).toBe("nope");
   });
 
   it("rejects subscription names for dispatch result schemas", () => {
@@ -435,29 +430,9 @@ describe("Domain.responseSchema", () => {
     const stringSchema = g.responseSchema("getString", selection);
     const numberSchema = g.responseSchema("getNumber", selection);
 
-    expect(() =>
-      decode(numberSchema, { value: { _tag: "Success", success: "not-a-number" } }),
-    ).toThrow();
-    expect(
-      Result.getOrThrow(
-        (
-          decode(numberSchema, { value: { _tag: "Success", success: 1 } }) as Record<
-            string,
-            Result.Result<number, unknown>
-          >
-        ).value,
-      ),
-    ).toBe(1);
-    expect(
-      Result.getOrThrow(
-        (
-          decode(stringSchema, { value: { _tag: "Success", success: "x" } }) as Record<
-            string,
-            Result.Result<string, unknown>
-          >
-        ).value,
-      ),
-    ).toBe("x");
+    expect(() => decode(numberSchema, { value: "not-a-number" })).toThrow();
+    expect((decode(numberSchema, { value: 1 }) as { value: number }).value).toBe(1);
+    expect((decode(stringSchema, { value: "x" }) as { value: string }).value).toBe("x");
   });
 
   it("unions same-named fields across object-union variants", () => {
@@ -481,17 +456,8 @@ describe("Domain.responseSchema", () => {
     const selection = decode(g.selectionSchema("get"), { value: true });
     const schema = g.responseSchema("get", selection as Selection);
 
-    const text = decode(schema, { value: { _tag: "Success", success: "ok" } }) as Record<
-      string,
-      Result.Result<string | number, unknown>
-    >;
-    const count = decode(schema, { value: { _tag: "Success", success: 1 } }) as Record<
-      string,
-      Result.Result<string | number, unknown>
-    >;
-
-    expect(Result.getOrThrow(text.value)).toBe("ok");
-    expect(Result.getOrThrow(count.value)).toBe(1);
+    expect((decode(schema, { value: "ok" }) as { value: unknown }).value).toBe("ok");
+    expect((decode(schema, { value: 1 }) as { value: unknown }).value).toBe(1);
   });
 
   it("throws for unknown fields in unvalidated selections", () => {
@@ -521,17 +487,11 @@ describe("Domain.responseSchema", () => {
     const selection = decode(g.selectionSchema("get"), { value: true });
     const schema = g.responseSchema("get", selection as Selection);
 
-    const none = decode(schema, { _tag: "None" }) as Option.Option<unknown>;
-    const present = decode(schema, { value: { _tag: "Success", success: 1 } }) as Record<
-      string,
-      Result.Result<string | number, unknown>
-    >;
-
-    expect(Option.isNone(none)).toBe(true);
-    expect(Result.getOrThrow(present.value)).toBe(1);
+    expect(decode(schema, null)).toBeNull();
+    expect((decode(schema, { value: 1 }) as { value: unknown }).value).toBe(1);
   });
 
-  it("mirrors nullable object roots as None or the projected object", () => {
+  it("mirrors nullable object roots as null or the projected object", () => {
     const User = node("NullableUser", Schema.Struct({ id: Schema.String }), {});
     const g = Domain.make({
       maybeUser: operation({
@@ -542,17 +502,11 @@ describe("Domain.responseSchema", () => {
     const selection = decode(g.selectionSchema("maybeUser"), { id: true });
     const schema = g.responseSchema("maybeUser", selection as Selection);
 
-    const none = decode(schema, { _tag: "None" }) as Option.Option<unknown>;
-    const present = decode(schema, { id: { _tag: "Success", success: "1" } }) as Record<
-      string,
-      Result.Result<string, unknown>
-    >;
-
-    expect(Option.isNone(none)).toBe(true);
-    expect(Result.getOrThrow(present.id)).toBe("1");
+    expect(decode(schema, null)).toBeNull();
+    expect((decode(schema, { id: "1" }) as { id: string }).id).toBe("1");
   });
 
-  it("mirrors nullable array roots as None or the projected array", () => {
+  it("mirrors nullable array roots as null or the projected array", () => {
     const User = node("NullableArrayUser", Schema.Struct({ id: Schema.String }), {});
     const g = Domain.make({
       maybeUsers: operation({
@@ -563,11 +517,9 @@ describe("Domain.responseSchema", () => {
     const selection = decode(g.selectionSchema("maybeUsers"), { id: true });
     const schema = g.responseSchema("maybeUsers", selection as Selection);
 
-    const decoded = decode(schema, [{ id: { _tag: "Success", success: "1" } }]) as ReadonlyArray<
-      Record<string, Result.Result<string, unknown>>
-    >;
-
-    expect(Result.getOrThrow(decoded[0]!.id)).toBe("1");
+    expect(decode(schema, null)).toBeNull();
+    const decoded = decode(schema, [{ id: "1" }]) as ReadonlyArray<{ id: string }>;
+    expect(decoded[0]!.id).toBe("1");
   });
 
   it("mirrors nested array roots as nested projected arrays", () => {
@@ -581,14 +533,11 @@ describe("Domain.responseSchema", () => {
     const selection = decode(g.selectionSchema("userGroups"), { id: true });
     const schema = g.responseSchema("userGroups", selection as Selection);
 
-    const decoded = decode(schema, [[{ id: { _tag: "Success", success: "1" } }]]) as ReadonlyArray<
-      ReadonlyArray<Record<string, Result.Result<string, unknown>>>
-    >;
-
-    expect(Result.getOrThrow(decoded[0]![0]!.id)).toBe("1");
+    const decoded = decode(schema, [[{ id: "1" }]]) as ReadonlyArray<ReadonlyArray<{ id: string }>>;
+    expect(decoded[0]![0]!.id).toBe("1");
   });
 
-  it("mirrors nullable nested array roots as None or nested projected arrays", () => {
+  it("mirrors nullable nested array roots as null or nested projected arrays", () => {
     const User = node("NullableNestedArrayUser", Schema.Struct({ id: Schema.String }), {});
     const g = Domain.make({
       maybeUserGroups: operation({
@@ -599,13 +548,9 @@ describe("Domain.responseSchema", () => {
     const selection = decode(g.selectionSchema("maybeUserGroups"), { id: true });
     const schema = g.responseSchema("maybeUserGroups", selection as Selection);
 
-    const none = decode(schema, { _tag: "None" }) as Option.Option<unknown>;
-    const present = decode(schema, [[{ id: { _tag: "Success", success: "1" } }]]) as ReadonlyArray<
-      ReadonlyArray<Record<string, Result.Result<string, unknown>>>
-    >;
-
-    expect(Option.isNone(none)).toBe(true);
-    expect(Result.getOrThrow(present[0]![0]!.id)).toBe("1");
+    expect(decode(schema, null)).toBeNull();
+    const present = decode(schema, [[{ id: "1" }]]) as ReadonlyArray<ReadonlyArray<{ id: string }>>;
+    expect(present[0]![0]!.id).toBe("1");
   });
 
   it("mirrors array-wrapped union roots as projected arrays", () => {
@@ -618,16 +563,11 @@ describe("Domain.responseSchema", () => {
     const schema = unionGraph.responseSchema("listPetVariant", selection as Selection);
 
     const decoded = decode(schema, [
-      {
-        _tag: { _tag: "Success", success: "dog" },
-        name: { _tag: "Success", success: "Rex" },
-        meow: { _tag: "Success", success: undefined },
-        bark: { _tag: "Success", success: "Rex barks" },
-      },
-    ]) as ReadonlyArray<Record<string, Result.Result<unknown, unknown>>>;
+      { _tag: "dog", name: "Rex", meow: undefined, bark: "Rex barks" },
+    ]) as ReadonlyArray<Record<string, unknown>>;
 
-    expect(Result.getOrThrow(decoded[0]!.meow)).toBeUndefined();
-    expect(Result.getOrThrow(decoded[0]!.bark)).toBe("Rex barks");
+    expect(decoded[0]!.meow).toBeUndefined();
+    expect(decoded[0]!.bark).toBe("Rex barks");
   });
 
   it("mirrors nested selections on fields missing from object-union variants as undefined", () => {
@@ -659,15 +599,11 @@ describe("Domain.responseSchema", () => {
     });
     const schema = g.responseSchema("getPet", selection as Selection);
 
-    const decoded = decode(schema, {
-      _tag: { _tag: "Success", success: "dog" },
-      toys: { _tag: "Success", success: undefined },
-    }) as Record<string, Result.Result<unknown, unknown>>;
-
-    expect(Result.getOrThrow(decoded.toys)).toBeUndefined();
+    const decoded = decode(schema, { _tag: "dog", toys: undefined }) as Record<string, unknown>;
+    expect(decoded.toys).toBeUndefined();
   });
 
-  it("property: decodes executed valid selections back to live Result trees", async () => {
+  it("property: executed valid selections round-trip the response codec", async () => {
     await fc.assert(
       fc.asyncProperty(validSelection, async (rawSelection) => {
         const selection = decode(propertyGraph.selectionSchema("getUser"), rawSelection);
@@ -675,10 +611,9 @@ describe("Domain.responseSchema", () => {
           propertyGraph.execute("getUser", { select: selection as never }),
         );
         const responseSchema = propertyGraph.responseSchema("getUser", selection as Selection);
-        const decoded = decode(responseSchema, toWire(result));
+        const decoded = decode(responseSchema, encode(responseSchema, result));
 
         expect(decoded).toEqual(result);
-        assertLiveResults(decoded);
       }),
       { numRuns: 150 },
     );
@@ -695,10 +630,9 @@ describe("Domain.responseSchema", () => {
             unionGraph.execute("getPet", { args: { variant }, select: selection as never }),
           );
           const responseSchema = unionGraph.responseSchema("getPet", selection as Selection);
-          const decoded = decode(responseSchema, toWire(result));
+          const decoded = decode(responseSchema, encode(responseSchema, result));
 
           expect(decoded).toEqual(result);
-          assertLiveResults(decoded);
         },
       ),
       { numRuns: 150 },
@@ -713,10 +647,9 @@ describe("Domain.responseSchema", () => {
           unionGraph.execute("listPets", { select: selection as never }),
         );
         const responseSchema = unionGraph.responseSchema("listPets", selection as Selection);
-        const decoded = decode(responseSchema, toWire(result));
+        const decoded = decode(responseSchema, encode(responseSchema, result));
 
         expect(decoded).toEqual(result);
-        assertLiveResults(decoded);
       }),
       { numRuns: 150 },
     );

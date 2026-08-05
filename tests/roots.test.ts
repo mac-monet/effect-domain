@@ -1,4 +1,4 @@
-import { Effect, Option, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { describe, expect, expectTypeOf, it } from "vite-plus/test";
 import { Domain, field, node, operation } from "../src/index.ts";
 import type { RootSelectionFor } from "../src/index.ts";
@@ -51,14 +51,13 @@ describe("Unit 12: root output generalization", () => {
       g.execute("listUsers", { select: { id: true, fullName: true } }),
     );
 
-    expect(Array.isArray(result)).toBe(true);
-    expect(Result.getOrThrow(result[0]!.id)).toBe("1");
-    expect(Result.getOrThrow(result[0]!.fullName)).toBe("Alice Smith");
-    expect(Result.getOrThrow(result[1]!.id)).toBe("2");
-    expect(Result.getOrThrow(result[1]!.fullName)).toBe("Bob Jones");
+    expect(result).toEqual([
+      { id: "1", fullName: "Alice Smith" },
+      { id: "2", fullName: "Bob Jones" },
+    ]);
   });
 
-  it("maps nullish elements to Option.none for arrays of nullable object roots", async () => {
+  it("maps nullish elements to null for arrays of nullable object roots", async () => {
     const g = Domain.make({
       listUsers: operation({
         type: Schema.Array(Schema.NullOr(User)),
@@ -75,11 +74,11 @@ describe("Unit 12: root output generalization", () => {
       g.execute("listUsers", { select: { id: true, fullName: true } }),
     );
 
-    const first = result[0] as Record<string, Result.Result<unknown, unknown>>;
-    const third = result[2] as Record<string, Result.Result<unknown, unknown>>;
-    expect(Result.getOrThrow(first.id!)).toBe("1");
-    expect(Option.isNone(result[1] as Option.Option<never>)).toBe(true);
-    expect(Result.getOrThrow(third.fullName!)).toBe("Bob Jones");
+    expect(result).toEqual([
+      { id: "1", fullName: "Alice Smith" },
+      null,
+      { id: "2", fullName: "Bob Jones" },
+    ]);
   });
 
   it("executes scalar roots without select and returns the scalar directly", async () => {
@@ -119,12 +118,8 @@ describe("Unit 12: root output generalization", () => {
     const result = await Effect.runPromise(
       g.execute("listUserGroups", { select: { id: true, fullName: true } }),
     );
-    const groups = result as unknown as ReadonlyArray<
-      ReadonlyArray<Record<string, Result.Result<unknown, unknown>>>
-    >;
 
-    expect(Result.getOrThrow(groups[0]![0]!.id)).toBe("1");
-    expect(Result.getOrThrow(groups[0]![0]!.fullName)).toBe("Nested User");
+    expect(result).toEqual([[{ id: "1", fullName: "Nested User" }]]);
   });
 
   it("projects present nullable nested array roots", async () => {
@@ -138,15 +133,11 @@ describe("Unit 12: root output generalization", () => {
     const result = await Effect.runPromise(
       g.execute("maybeUserGroups", { select: { id: true, fullName: true } }),
     );
-    const groups = result as unknown as ReadonlyArray<
-      ReadonlyArray<Record<string, Result.Result<unknown, unknown>>>
-    >;
 
-    expect(Result.getOrThrow(groups[0]![0]!.id)).toBe("1");
-    expect(Result.getOrThrow(groups[0]![0]!.fullName)).toBe("Nested User");
+    expect(result).toEqual([[{ id: "1", fullName: "Nested User" }]]);
   });
 
-  it("returns Option.none for absent nullable nested array roots", async () => {
+  it("returns null for absent nullable nested array roots", async () => {
     const g = Domain.make({
       maybeUserGroups: operation({
         type: Schema.NullOr(Schema.Array(Schema.Array(User))),
@@ -158,10 +149,10 @@ describe("Unit 12: root output generalization", () => {
       g.execute("maybeUserGroups", { select: { id: true, fullName: true } }),
     );
 
-    expect(Option.isNone(result as Option.Option<never>)).toBe(true);
+    expect(result).toBeNull();
   });
 
-  it("returns Option.none for absent nullable object roots", async () => {
+  it("returns null for absent nullable object roots", async () => {
     const g = Domain.make({
       getMaybeUser: operation({
         type: Schema.NullOr(User),
@@ -173,7 +164,7 @@ describe("Unit 12: root output generalization", () => {
       g.execute("getMaybeUser", { select: { id: true, fullName: true } }),
     );
 
-    expect(Option.isNone(result as Option.Option<never>)).toBe(true);
+    expect(result).toBeNull();
   });
 
   it("projects present nullable object roots", async () => {
@@ -188,9 +179,7 @@ describe("Unit 12: root output generalization", () => {
       g.execute("getMaybeUser", { select: { id: true, fullName: true } }),
     );
 
-    expect(Option.isNone(result as Option.Option<never>)).toBe(false);
-    const tree = result as Record<string, Result.Result<unknown, unknown>>;
-    expect(Result.getOrThrow(tree.id!)).toBe("1");
+    expect(result).toEqual({ id: "1", fullName: "Alice Smith" });
   });
 
   it("projects present nullable array roots", async () => {
@@ -205,8 +194,7 @@ describe("Unit 12: root output generalization", () => {
       g.execute("getMaybeUsers", { select: { id: true, fullName: true } }),
     );
 
-    const rows = result as ReadonlyArray<Record<string, Result.Result<unknown, unknown>>>;
-    expect(Result.getOrThrow(rows[0]!.fullName)).toBe("Alice Smith");
+    expect(result).toEqual([{ id: "1", fullName: "Alice Smith" }]);
   });
 
   it("preserves flat merged object-union root selections", async () => {
@@ -221,10 +209,10 @@ describe("Unit 12: root output generalization", () => {
       g.execute("getPet", { select: { _tag: true, name: true, meow: true, bark: true } }),
     );
 
-    expect(Result.getOrThrow(result._tag)).toBe("dog");
-    expect(Result.getOrThrow((result as any).bark)).toBe("Rex says woof");
+    expect(result._tag).toBe("dog");
+    expect((result as any).bark).toBe("Rex says woof");
     expect("meow" in result).toBe(true);
-    expect(Result.getOrThrow((result as any).meow)).toBeUndefined();
+    expect((result as any).meow).toBeUndefined();
   });
 
   it("preserves undefined for nested selections on fields missing from the runtime union variant", async () => {
@@ -257,7 +245,8 @@ describe("Unit 12: root output generalization", () => {
       }),
     );
 
-    expect(Result.getOrThrow((result as any).toys)).toBeUndefined();
+    expect("toys" in (result as object)).toBe(true);
+    expect((result as any).toys).toBeUndefined();
   });
 
   it("preserves undefined for nested selections on missing fields inside nested union values", async () => {
@@ -299,8 +288,10 @@ describe("Unit 12: root output generalization", () => {
       }),
     );
 
-    const pet = Result.getOrThrow(result.pet) as Record<string, Result.Result<unknown, unknown>>;
-    expect(Result.getOrThrow(pet.toys)).toBeUndefined();
+    const pet = (result as any).pet as Record<string, unknown>;
+    expect(pet._tag).toBe("dog");
+    expect("toys" in pet).toBe(true);
+    expect(pet.toys).toBeUndefined();
   });
 
   it("types object-union root results with variant-only fields", () => {
@@ -316,14 +307,14 @@ describe("Unit 12: root output generalization", () => {
     });
     type R = typeof result extends Effect.Effect<infer A, any, any> ? A : never;
     expectTypeOf<R>().toEqualTypeOf<{
-      _tag: Result.Result<"cat" | "dog", unknown>;
-      name: Result.Result<string, unknown>;
-      meow: Result.Result<string | undefined, unknown>;
-      bark: Result.Result<string | undefined, unknown>;
+      _tag: "cat" | "dog";
+      name: string;
+      meow: string | undefined;
+      bark: string | undefined;
     }>();
   });
 
-  it("types undefined-nullable object roots as Option.none capable", () => {
+  it("types undefined-nullable object roots as null capable", () => {
     const g = Domain.make({
       getMaybeUser: operation({
         type: Schema.UndefinedOr(User),
@@ -333,10 +324,10 @@ describe("Unit 12: root output generalization", () => {
 
     const result = g.execute("getMaybeUser", { select: { id: true } });
     type R = typeof result extends Effect.Effect<infer A, any, any> ? A : never;
-    expectTypeOf<R>().toEqualTypeOf<Option.None<never> | { id: Result.Result<string, unknown> }>();
+    expectTypeOf<R>().toEqualTypeOf<null | { id: string }>();
   });
 
-  it("types arrays of undefined-nullable objects as Option.none capable per element", () => {
+  it("types arrays of undefined-nullable objects as null capable per element", () => {
     const g = Domain.make({
       listMaybeUsers: operation({
         type: Schema.Array(Schema.UndefinedOr(User)),
@@ -346,9 +337,7 @@ describe("Unit 12: root output generalization", () => {
 
     const result = g.execute("listMaybeUsers", { select: { id: true } });
     type R = typeof result extends Effect.Effect<infer A, any, any> ? A : never;
-    expectTypeOf<R>().toEqualTypeOf<
-      Array<Option.None<never> | { id: Result.Result<string, unknown> }>
-    >();
+    expectTypeOf<R>().toEqualTypeOf<Array<null | { id: string }>>();
   });
 
   it("fails direct scalar root execution when a concrete select is forced", async () => {
@@ -443,7 +432,7 @@ describe("Unit 12: root output generalization", () => {
     });
     const arrayResult = arrayGraph.execute("listUsers", { select: { id: true } });
     type ArrayResult = typeof arrayResult extends Effect.Effect<infer A, any, any> ? A : never;
-    expectTypeOf<ArrayResult>().toEqualTypeOf<Array<{ id: Result.Result<string, unknown> }>>();
+    expectTypeOf<ArrayResult>().toEqualTypeOf<Array<{ id: string }>>();
 
     const nestedArrayGraph = Domain.make({
       listUserGroups: operation({
@@ -454,8 +443,6 @@ describe("Unit 12: root output generalization", () => {
     const nestedArrayResult = nestedArrayGraph.execute("listUserGroups", { select: { id: true } });
     type NestedArrayResult =
       typeof nestedArrayResult extends Effect.Effect<infer A, any, any> ? A : never;
-    expectTypeOf<NestedArrayResult>().toEqualTypeOf<
-      Array<Array<{ id: Result.Result<string, unknown> }>>
-    >();
+    expectTypeOf<NestedArrayResult>().toEqualTypeOf<Array<Array<{ id: string }>>>();
   });
 });

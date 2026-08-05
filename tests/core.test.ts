@@ -1,4 +1,4 @@
-import { Effect, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Domain, field, node, operation } from "../src/index.ts";
 
@@ -34,10 +34,7 @@ describe("Unit 1: minimal e2e", () => {
       }),
     );
 
-    expect(Result.isSuccess(result.id)).toBe(true);
-    expect(Result.isSuccess(result.fullName)).toBe(true);
-    expect(Result.getOrThrow(result.id)).toBe("1");
-    expect(Result.getOrThrow(result.fullName)).toBe("Alice Smith");
+    expect(result).toEqual({ id: "1", fullName: "Alice Smith" });
   });
 
   it("returns plain data fields via property access", async () => {
@@ -48,9 +45,9 @@ describe("Unit 1: minimal e2e", () => {
       }),
     );
 
-    expect(Result.getOrThrow(result.id)).toBe("2");
-    expect(Result.getOrThrow(result.firstName)).toBe("Alice");
-    expect(Result.getOrThrow(result.lastName)).toBe("Smith");
+    expect(result.id).toBe("2");
+    expect(result.firstName).toBe("Alice");
+    expect(result.lastName).toBe("Smith");
   });
 
   it("excludes unselected fields from result", async () => {
@@ -61,7 +58,7 @@ describe("Unit 1: minimal e2e", () => {
       }),
     );
 
-    expect(Result.isSuccess(result.id)).toBe(true);
+    expect(result.id).toBe("3");
     expect("fullName" in result).toBe(false);
     expect("firstName" in result).toBe(false);
     expect("lastName" in result).toBe(false);
@@ -149,7 +146,7 @@ describe("Unit 1: minimal e2e", () => {
 
     const result = await Effect.runPromise(g.execute("get", { select: { full: true } }));
 
-    expect(Result.getOrThrow(result.full)).toBe("Bob Jones");
+    expect(result.full).toBe("Bob Jones");
   });
 
   it("executes operation with no args", async () => {
@@ -162,10 +159,10 @@ describe("Unit 1: minimal e2e", () => {
 
     const result = await Effect.runPromise(g.execute("ping", { select: { ok: true } }));
 
-    expect(Result.getOrThrow(result.ok)).toBe(true);
+    expect(result.ok).toBe(true);
   });
 
-  it("wraps failing resolver in Result.Failure", async () => {
+  it("fails the operation with a failing field resolver's error", async () => {
     const Failing = node("Failing", Schema.Struct({ id: Schema.String }), {
       boom: field({
         type: Schema.String,
@@ -180,10 +177,11 @@ describe("Unit 1: minimal e2e", () => {
       }),
     });
 
-    const result = await Effect.runPromise(g.execute("get", { select: { id: true, boom: true } }));
+    const error = await Effect.runPromise(
+      Effect.flip(g.execute("get", { select: { id: true, boom: true } })),
+    );
 
-    expect(Result.isSuccess(result.id)).toBe(true);
-    expect(Result.isFailure(result.boom)).toBe(true);
+    expect(error).toBe("resolver error");
   });
 
   it("infers operation name from record key", () => {
