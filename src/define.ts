@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Request, RequestResolver, Schema, SchemaAST, Stream } from "effect";
+import { Effect, Exit, Request, RequestResolver, Schema, SchemaAST, Stream } from "effect";
 
 const ComputedFieldsKey = "effect-domain/fieldDefs";
 const IdentityKey = "effect-domain/identity";
@@ -129,7 +129,7 @@ export interface FieldConfig<Type, Parent, E, R, Args = never> {
  * from the parent and `resolve` receives all keys requested in the current
  * scheduler tick, returning a map of results. The walker batches via
  * `Effect.request`, so 50 parents needing the same field become one `resolve`
- * call. A missing key becomes an individual field failure.
+ * call. A missing key is a resolver contract violation and dies as a defect.
  *
  * @since 0.1.0
  * @category models
@@ -170,10 +170,12 @@ function makeBatchedField(
             if (resultMap.has(entry.request.key)) {
               entry.completeUnsafe(Exit.succeed(resultMap.get(entry.request.key)));
             } else {
+              // The resolver was handed this key and returned no entry for
+              // it — a resolver contract violation, not a domain outcome. It
+              // is not in the field's E and cannot encode, so it dies (like
+              // a nullish value for a non-nullable root).
               entry.completeUnsafe(
-                Exit.fail(
-                  new Cause.NoSuchElementError(`Batched field missing key: ${entry.request.key}`),
-                ),
+                Exit.die(new Error(`Batched field missing key: ${entry.request.key}`)),
               );
             }
           }

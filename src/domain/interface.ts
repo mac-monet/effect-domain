@@ -200,10 +200,13 @@ export interface DomainInstance<
    * Returns a runtime Schema for the full `dispatch` result wire shape:
    * `Result<responseSchema(name, selection), GatewayError | OperationError<E>>`.
    *
-   * The graph derives the success schema from the operation and selection,
-   * and — when `operationErrorSchema` is omitted — the error cause schema
-   * from the operation's declared `error` (see {@link errorSchema}). Pass
-   * `operationErrorSchema` explicitly only to override the declared schema.
+   * The graph derives the success schema from the operation and selection.
+   * The error cause schema is the operation's declared `error` (see
+   * {@link errorSchema}) unioned with every reachable field's declared
+   * `error` — a field's typed failure fails the whole operation, so its
+   * schema belongs to the cause union. Passing `operationErrorSchema`
+   * overrides only the operation-declared part; field error schemas are
+   * always unioned in.
    */
   dispatchResultSchema<
     K extends DomainTypes.OperationNamesByStream<Ops, false>,
@@ -216,7 +219,7 @@ export interface DomainInstance<
   ): Schema.Codec<
     Result.Result<
       DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
-      GatewayError | OperationError<F["Type"]>
+      GatewayError | OperationError<F["Type"] | DomainTypes.OperationFieldWireE<Ops[K]>>
     >,
     unknown,
     F["DecodingServices"],
@@ -231,7 +234,7 @@ export interface DomainInstance<
   ): Schema.Codec<
     Result.Result<
       DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
-      GatewayError | OperationError<DomainTypes.DeclaredErrorType<Ops[K]>>
+      GatewayError | OperationError<DomainTypes.OperationWireE<Ops[K]>>
     >,
     unknown,
     never,
@@ -252,10 +255,11 @@ export interface DomainInstance<
    * wire-erased to `unknown`; use the typed overloads when the operation
    * name is static.
    *
-   * The error cause schema is always the operation's declared `error`
-   * (see {@link errorSchema}); a dynamic adapter holding only a runtime name
-   * has no per-operation override to offer. Use the typed
-   * `dispatchResultSchema` to override explicitly.
+   * The error cause schema is the operation's declared `error` (see
+   * {@link errorSchema}) unioned with every reachable field's declared
+   * `error`; a dynamic adapter holding only a runtime name has no
+   * per-operation override to offer. Use the typed `dispatchResultSchema`
+   * to override the operation-declared part explicitly.
    */
   dispatchResultSchemaDynamic(
     name: string,

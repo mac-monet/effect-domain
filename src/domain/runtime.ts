@@ -172,13 +172,17 @@ function makeDomainWithLayers<
   // schema is the operation's declared errors plus every reachable field's.
   // Memoized per operation — reachability is selection-independent.
   const causeSchemas = new Map<string, Schema.Top>();
-  function operationCauseSchema(name: string, op: AnyOperationDef): Schema.Top {
-    const cached = causeSchemas.get(name);
+  function operationCauseSchema(
+    name: string,
+    op: AnyOperationDef,
+    operationErrorOverride?: Schema.Top,
+  ): Schema.Top {
+    const cached = operationErrorOverride === undefined ? causeSchemas.get(name) : undefined;
     if (cached) return cached;
     const fieldErrors = reachableFieldErrorSchemas(registry, op.type.ast);
-    const declared = op.error ?? Schema.Never;
+    const declared = operationErrorOverride ?? op.error ?? Schema.Never;
     const built = fieldErrors.length === 0 ? declared : Schema.Union([declared, ...fieldErrors]);
-    causeSchemas.set(name, built);
+    if (operationErrorOverride === undefined) causeSchemas.set(name, built);
     return built;
   }
 
@@ -392,7 +396,7 @@ function makeDomainWithLayers<
       const success = rootToResponseSchema(registry, op.type.ast, selection);
       const failure = Schema.Union([
         GatewayError,
-        OperationError.schema(operationErrorSchema ?? operationCauseSchema(name, op)),
+        OperationError.schema(operationCauseSchema(name, op, operationErrorSchema)),
       ]);
       return ResultCodec(success, failure);
     },

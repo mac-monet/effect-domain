@@ -3,6 +3,7 @@ import {
   arrayCodec,
   codecFromAst,
   type DynamicCodec,
+  optionalCodec,
   structCodec,
   suspendCodec,
   unionCodec,
@@ -151,9 +152,17 @@ function nodeToResponseSchema(
       if (field.fieldAsts.length === 0) {
         throw new Error(`responseSchema: unknown selection field "${field.entry.fieldName}"`);
       }
-      fields[field.entry.outputKey] = unionCodec(
+      const built = unionCodec(
         field.fieldAsts.map((fieldAst) => fieldSuccessSchema(registry, fieldAst, field)),
       );
+      // A slot admitting `undefined` (field missing on some union variant, or
+      // a genuinely optional value) must be an optional key: struct encode
+      // drops undefined-valued keys, so a required key could not decode its
+      // own encode output.
+      const admitsUndefined = field.fieldAsts.some((fieldAst) =>
+        SchemaAST.isUndefined(unwrapType(fieldAst)),
+      );
+      fields[field.entry.outputKey] = admitsUndefined ? optionalCodec(built) : built;
     }
     const built = structCodec(fields);
     realized.value = built;

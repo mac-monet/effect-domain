@@ -81,6 +81,10 @@ type KnownOrNever<X> = unknown extends X ? never : X;
 type FieldE<F> = F extends { readonly _error?: () => infer E } ? KnownOrNever<E> : never;
 type FieldR<F> = F extends { readonly _requirements?: () => infer R } ? KnownOrNever<R> : never;
 type FieldErrS<F> = F extends { readonly _errorSchema?: () => infer S } ? KnownOrNever<S> : never;
+// Single-level unwrap by design: a recursive alias here makes TS flag the
+// Node* extractors as circular on self-recursive node types. Doubly-nested
+// array fields (Array<Array<Node>>) therefore don't contribute to Node*
+// unions — accept the gap, it keeps recursion tractable.
 type UnwrapElement<T> = [NonNullable<T>] extends [readonly (infer E)[]]
   ? NonNullable<E>
   : NonNullable<T>;
@@ -93,14 +97,33 @@ type NodeFieldDefs<T> = T extends object
     : never
   : never;
 
+// Recursion shape shared by the Node* extractors: the outer alias distributes
+// over union types (a `keyof` over the union would keep only shared keys and
+// lose variant-specific fields). Node-typed values recurse through every key;
+// anonymous structs step only into properties that are themselves nodes — an
+// unconditional step would make TS flag self-recursive plain interfaces as
+// circular, so nodes nested under TWO anonymous struct levels don't
+// contribute (the runtime still executes them; accept the type-level gap).
+
 /**
  * The requirement union of every computed field reachable from a node type:
  * its own fields plus, recursively, the fields of node-typed values under any
  * key (data or computed, through arrays and nullables). This is what `node()`
  * erases from the value surface and the {@link NodeMeta} phantom preserves.
  */
-export type NodeR<T> = [NodeFieldDefs<T>] extends [never]
-  ? never
+export type NodeR<T> = T extends unknown ? NodeROf<T> : never;
+type NodeROf<T> = [NodeFieldDefs<T>] extends [never]
+  ? T extends readonly unknown[]
+    ? never
+    : T extends (...args: never) => unknown
+      ? never
+      : T extends object
+        ? {
+            [K in keyof T & string]: [NodeFieldDefs<UnwrapElement<T[K]>>] extends [never]
+              ? never
+              : NodeR<UnwrapElement<T[K]>>;
+          }[keyof T & string]
+        : never
   :
       | { [K in keyof NodeFieldDefs<T>]: FieldR<NodeFieldDefs<T>[K]> }[keyof NodeFieldDefs<T>]
       | { [K in keyof T & string]: NodeR<UnwrapElement<T[K]>> }[keyof T & string];
@@ -108,8 +131,19 @@ export type NodeR<T> = [NodeFieldDefs<T>] extends [never]
 /** Selection-independent field error union, mirror of {@link NodeR}: a
  * field's typed failure fails the whole operation (strict walk semantics),
  * so it belongs to `execute`'s error channel alongside the resolver's E. */
-export type NodeE<T> = [NodeFieldDefs<T>] extends [never]
-  ? never
+export type NodeE<T> = T extends unknown ? NodeEOf<T> : never;
+type NodeEOf<T> = [NodeFieldDefs<T>] extends [never]
+  ? T extends readonly unknown[]
+    ? never
+    : T extends (...args: never) => unknown
+      ? never
+      : T extends object
+        ? {
+            [K in keyof T & string]: [NodeFieldDefs<UnwrapElement<T[K]>>] extends [never]
+              ? never
+              : NodeE<UnwrapElement<T[K]>>;
+          }[keyof T & string]
+        : never
   :
       | { [K in keyof NodeFieldDefs<T>]: FieldE<NodeFieldDefs<T>[K]> }[keyof NodeFieldDefs<T>]
       | { [K in keyof T & string]: NodeE<UnwrapElement<T[K]>> }[keyof T & string];
@@ -120,8 +154,19 @@ export type NodeE<T> = [NodeFieldDefs<T>] extends [never]
  * `error` schema. Feeds {@link MissingErrorSchemas} so the wire boundaries
  * reject domains whose field failures cannot round-trip.
  */
-type NodeUndeclaredE<T> = [NodeFieldDefs<T>] extends [never]
-  ? never
+type NodeUndeclaredE<T> = T extends unknown ? NodeUndeclaredEOf<T> : never;
+type NodeUndeclaredEOf<T> = [NodeFieldDefs<T>] extends [never]
+  ? T extends readonly unknown[]
+    ? never
+    : T extends (...args: never) => unknown
+      ? never
+      : T extends object
+        ? {
+            [K in keyof T & string]: [NodeFieldDefs<UnwrapElement<T[K]>>] extends [never]
+              ? never
+              : NodeUndeclaredE<UnwrapElement<T[K]>>;
+          }[keyof T & string]
+        : never
   :
       | {
           [K in keyof NodeFieldDefs<T>]: [FieldErrS<NodeFieldDefs<T>[K]>] extends [never]
@@ -129,6 +174,35 @@ type NodeUndeclaredE<T> = [NodeFieldDefs<T>] extends [never]
             : never;
         }[keyof NodeFieldDefs<T>]
       | { [K in keyof T & string]: NodeUndeclaredE<UnwrapElement<T[K]>> }[keyof T & string];
+
+/**
+ * The union of declared field error `Type`s reachable from a node type — the
+ * type-level mirror of the runtime's `reachableFieldErrorSchemas`, which
+ * unions these schemas into the operation's wire cause codec.
+ */
+export type NodeDeclaredE<T> = T extends unknown ? NodeDeclaredEOf<T> : never;
+type DeclaredTypeOf<ErrS> = [ErrS] extends [never]
+  ? never
+  : ErrS extends { readonly Type: infer ErrT }
+    ? ErrT
+    : never;
+type NodeDeclaredEOf<T> = [NodeFieldDefs<T>] extends [never]
+  ? T extends readonly unknown[]
+    ? never
+    : T extends (...args: never) => unknown
+      ? never
+      : T extends object
+        ? {
+            [K in keyof T & string]: [NodeFieldDefs<UnwrapElement<T[K]>>] extends [never]
+              ? never
+              : NodeDeclaredE<UnwrapElement<T[K]>>;
+          }[keyof T & string]
+        : never
+  :
+      | {
+          [K in keyof NodeFieldDefs<T>]: DeclaredTypeOf<FieldErrS<NodeFieldDefs<T>[K]>>;
+        }[keyof NodeFieldDefs<T>]
+      | { [K in keyof T & string]: NodeDeclaredE<UnwrapElement<T[K]>> }[keyof T & string];
 
 /**
  * The full requirement type of an operation: the resolver's `R` plus the
@@ -142,6 +216,16 @@ export type OperationR<Op> = ExtractR<Op> | NodeR<UnwrapElement<ExtractType<Op>>
  * failures of every computed field reachable from its root type.
  */
 export type OperationE<Op> = ExtractE<Op> | NodeE<UnwrapElement<ExtractType<Op>>>;
+
+/**
+ * The full wire-decodable failure type of an operation: the declared error
+ * schema's `Type` plus every reachable field's declared error `Type` — the
+ * exact union the runtime failure codec (`operationCauseSchema`) decodes.
+ */
+export type OperationWireE<Op> = DeclaredErrorType<Op> | OperationFieldWireE<Op>;
+
+/** Just the reachable declared field error `Type`s of an operation. */
+export type OperationFieldWireE<Op> = NodeDeclaredE<UnwrapElement<ExtractType<Op>>>;
 
 export type AllE<Ops extends Record<string, AnyOperationDef>> = {
   [K in keyof Ops]: OperationE<Ops[K]>;

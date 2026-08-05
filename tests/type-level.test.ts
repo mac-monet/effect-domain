@@ -2,7 +2,7 @@ import { Context, Effect, Schema, Stream } from "effect";
 import { describe, expectTypeOf, it } from "vite-plus/test";
 import { Domain, field, node, operation, subscription } from "../src/index.ts";
 import type { SelectionFor } from "../src/index.ts";
-import type { AllR, NodeE, NodeR } from "../src/domain/type-level.ts";
+import type { AllR, NodeDeclaredE, NodeE, NodeR } from "../src/domain/type-level.ts";
 
 const typecheckOnly: boolean = false;
 
@@ -155,6 +155,40 @@ describe("Unit 7: typed selections and NodeType", () => {
     type T = { profile: { bio: string } | null };
     type R = Domain.SelectedOf<T, { profile: { select: { bio: true } } }>;
     expectTypeOf<R>().toEqualTypeOf<{ profile: null | { bio: string } }>();
+  });
+
+  it("Node extractors see union variants, anonymous-struct roots, and declared field errors", () => {
+    class CatSvc extends Context.Service<CatSvc, { readonly c: number }>()("CatSvc") {}
+    class DogErr extends Schema.TaggedErrorClass<DogErr>("DogErr")("DogErr", {}) {}
+
+    const Cat = node("TLCat", Schema.Struct({ _tag: Schema.Literal("cat") }), (f) => ({
+      purr: f.field({
+        type: Schema.Number,
+        resolve: () =>
+          Effect.gen(function* () {
+            const { c } = yield* CatSvc;
+            return c;
+          }),
+      }),
+    }));
+    const Dog = node("TLDog", Schema.Struct({ _tag: Schema.Literal("dog") }), (f) => ({
+      bark: f.field({
+        type: Schema.String,
+        error: DogErr,
+        resolve: () => Effect.fail(new DogErr()),
+      }),
+    }));
+    type Pet = Schema.Schema.Type<typeof Cat> | Schema.Schema.Type<typeof Dog>;
+
+    // Variant-specific fields survive the union (keyof-intersection would drop both).
+    expectTypeOf<NodeR<Pet>>().toEqualTypeOf<CatSvc>();
+    expectTypeOf<NodeE<Pet>>().toEqualTypeOf<DogErr>();
+    // Declared field error Types feed the wire failure union.
+    expectTypeOf<NodeDeclaredE<Pet>>().toEqualTypeOf<DogErr>();
+
+    // A node nested under an anonymous struct root still contributes.
+    type AnonRoot = { readonly pet: Schema.Schema.Type<typeof Cat> };
+    expectTypeOf<NodeR<AnonRoot>>().toEqualTypeOf<CatSvc>();
   });
 
   it("SelectedOf preserves null as-is for scalar selections", () => {

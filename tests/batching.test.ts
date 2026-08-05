@@ -167,7 +167,7 @@ describe("Unit 5: batched fields via key", () => {
     expect(batchCalled).toBe(true);
   });
 
-  it("missing map entry for a key fails the operation with NoSuchElementError", async () => {
+  it("missing map entry for a key dies as a resolver contract violation", async () => {
     const Item = node("FailItem", Schema.Struct({ id: Schema.String }), (f) => ({
       value: f.field({
         type: Schema.String,
@@ -206,11 +206,8 @@ describe("Unit 5: batched fields via key", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.findErrorOption(exit.cause);
-      expect(failure._tag).toBe("Some");
-      if (failure._tag === "Some") {
-        expect(Cause.isNoSuchElementError(failure.value)).toBe(true);
-      }
+      expect(Cause.hasDies(exit.cause)).toBe(true);
+      expect(Cause.hasFails(exit.cause)).toBe(false);
     }
   });
 
@@ -300,10 +297,7 @@ describe("Unit 5: batched fields via key", () => {
           if (anyMissing) {
             expect(Exit.isFailure(exit)).toBe(true);
             if (Exit.isFailure(exit)) {
-              const failure = Cause.findErrorOption(exit.cause);
-              expect(failure._tag === "Some" && Cause.isNoSuchElementError(failure.value)).toBe(
-                true,
-              );
+              expect(Cause.hasDies(exit.cause)).toBe(true);
             }
           } else {
             expect(Exit.isSuccess(exit)).toBe(true);

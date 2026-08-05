@@ -603,6 +603,26 @@ describe("Domain.responseSchema", () => {
     expect(decoded.toys).toBeUndefined();
   });
 
+  it("round-trips a union dispatch whose selection touches a variant-specific field", async () => {
+    // Regression: struct encode drops undefined-valued keys, so the
+    // variant-missing slot must be an optional key or the codec cannot
+    // decode its own encode output.
+    const selection = { name: true, bark: true } as const;
+    const encoded = await Effect.runPromise(
+      unionGraph.handleDispatch({ name: "getPet", args: { variant: "cat" }, select: selection }),
+    );
+    const decoded = decode(
+      unionGraph.dispatchResultSchemaDynamic("getPet", selection),
+      encoded,
+    ) as {
+      _tag: string;
+      success: Record<string, unknown>;
+    };
+    expect(decoded._tag).toBe("Success");
+    expect(decoded.success.name).toBe("Whiskers");
+    expect(decoded.success.bark).toBeUndefined();
+  });
+
   it("property: executed valid selections round-trip the response codec", async () => {
     await fc.assert(
       fc.asyncProperty(validSelection, async (rawSelection) => {

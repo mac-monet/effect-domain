@@ -35,15 +35,12 @@ export interface WireTransport<TE> {
 }
 
 /**
- * Everything a wire call can fail with: the operation's declared error
- * (unwrapped from `OperationError`), a boundary `GatewayError`, a decode
- * failure, or the transport's own failure type.
+ * Everything a wire call can fail with: the operation's declared errors —
+ * including declared field errors, since a field's typed failure fails the
+ * whole operation — unwrapped from `OperationError`, a boundary
+ * `GatewayError`, a decode failure, or the transport's own failure type.
  */
-type ClientErrors<Op, TE> =
-  | DomainTypes.DeclaredErrorType<Op>
-  | GatewayError
-  | Schema.SchemaError
-  | TE;
+type ClientErrors<Op, TE> = DomainTypes.OperationWireE<Op> | GatewayError | Schema.SchemaError | TE;
 
 type InvokeConfig<Op, S> = DomainTypes.DomainInvokeConfig<
   DomainTypes.ExtractType<Op>,
