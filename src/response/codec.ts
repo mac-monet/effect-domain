@@ -13,7 +13,7 @@ import {
 import { canonicalizeSelection } from "../invocation-key.ts";
 import type { NodeRegistry } from "../registry.ts";
 import type { RootPlan } from "../selection/projection.ts";
-import { isNullable, nonNullishRootAst, unwrapType } from "../schema/ast.ts";
+import { admitsUndefinedAst, isNullable, nonNullishRootAst, unwrapType } from "../schema/ast.ts";
 import {
   planSelectedNode,
   type SelectedFieldPlan,
@@ -170,21 +170,6 @@ function nodeToResponseSchema(
     nodeResponseCache.get(ast)?.delete(selectionKey);
     throw error;
   }
-}
-
-// Undefined can reach a slot three ways: the union-variant sentinel, a
-// Void/Undefined-typed field, or a union with such a member
-// (Schema.UndefinedOr). All three must make the slot an optional key.
-// `seen` guards recursive unions reachable through suspends, which
-// unwrapType canonicalizes back to the same AST.
-function admitsUndefinedAst(ast: SchemaAST.AST, seen?: Set<SchemaAST.AST>): boolean {
-  const typeAst = unwrapType(ast);
-  if (SchemaAST.isUndefined(typeAst) || SchemaAST.isVoid(typeAst)) return true;
-  if (!SchemaAST.isUnion(typeAst)) return false;
-  const visited = seen ?? new Set();
-  if (visited.has(typeAst)) return false;
-  visited.add(typeAst);
-  return typeAst.types.some((member) => admitsUndefinedAst(member, visited));
 }
 
 function fieldSuccessSchema(

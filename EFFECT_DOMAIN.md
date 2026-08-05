@@ -10,7 +10,7 @@ This library aims to be a reference-quality Effect library — immaculate code q
 
 **Immaculate code quality.** Every line should be intentional. No dead code, no half-finished abstractions, no "good enough for now" shortcuts. The library is small enough that every corner can be polished. When in doubt, simplify.
 
-**Idiomatic Effect patterns.** Follow Effect's conventions for API design: interface + namespace declaration merging (`Domain.make`, `Domain.SelectedOf`), `Option` over `null`, `Result` over try/catch, `Schema` over runtime checks, `never` for erased type channels, `NoInfer` to control inference direction. When there's a choice between a JavaScript idiom and an Effect equivalent, choose Effect.
+**Idiomatic Effect patterns.** Follow Effect's conventions for API design: interface + namespace declaration merging (`Domain.make`, `Domain.SelectedOf`), `Option` over `null`, `Result` over try/catch, `Schema` over runtime checks, `never` for erased type channels, `NoInfer` to control inference direction. (Projection results are the deliberate exception: absence is plain `null` and there is no per-field partial success — see _Absence is `null`_.) When there's a choice between a JavaScript idiom and an Effect equivalent, choose Effect.
 
 **Developer experience as a feature.** The public API should require zero type assertions from consumers. Type inference should work naturally — selections constrain to valid fields, results reflect exactly what was selected, errors compose with Effect's error channel. If a consumer needs `as any` to use this library, that's a bug.
 
@@ -194,7 +194,7 @@ Streams (`subscribe`/`dispatchSubscription`) deliberately do not accept the flag
 
 ## Design Decisions
 
-**Effect-native over JavaScript idioms.** Favor Effect's type-safe primitives over raw JavaScript patterns. Use `Option` instead of `null`/`undefined` for absence, `Result` instead of try/catch for partial success, `Effect.all` instead of `Promise.all`, `Schema` instead of runtime type checks. When there's a choice between a JavaScript convention and an Effect equivalent, choose Effect — it composes better and makes the type-level guarantees real.
+**Effect-native over JavaScript idioms.** Favor Effect's type-safe primitives over raw JavaScript patterns. Use `Option` instead of `null`/`undefined` for absence, `Result` instead of try/catch for partial success, `Effect.all` instead of `Promise.all`, `Schema` instead of runtime type checks. (Projection results deliberately break this: they are JSON-native plain data, absence is `null`, and a field failure fails the whole operation — see _Absence is `null`_ and _Strict failure semantics_.) When there's a choice between a JavaScript convention and an Effect equivalent, choose Effect — it composes better and makes the type-level guarantees real.
 
 **Strong typing with minimal, documented casts.** The library minimizes `any` and `as` type assertions. The public API is zero-cast — consumers never need `as`, `any`, or `@ts-expect-error`. Internal casts exist only at type boundaries where TypeScript fundamentally cannot express the constraint, and each one follows a recognized pattern:
 
@@ -453,7 +453,6 @@ Built for Effect v4 from day one — no v3 migration path, and v3 patterns do no
 
 - `Domain.SelectedOf<T, S>` — plain projected tree type for a given type and selection
 - `Domain.RootSelectedOf<T, S>` — operation-root projection type for generic root outputs
-- `Domain.NarrowBySelection<T, Sel>` — narrow result type by selection
 - `DomainInstance<Ops>` — typed graph instance
 - `NodeType<S, Computed>` — merged data + computed field types
 - `SelectionFor<T>` — constrain selections to valid fields

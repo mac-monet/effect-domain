@@ -36,6 +36,7 @@ export const UpdatedFirstNameInput = m("UpdatedFirstNameInput", { value: S.Strin
 export const UpdatedLastNameInput = m("UpdatedLastNameInput", { value: S.String });
 export const SubmittedCreateForm = m("SubmittedCreateForm");
 export const SucceededCreateUser = m("SucceededCreateUser", { user: UserSummary });
+export const FailedCreateUser = m("FailedCreateUser", { error: S.String });
 
 export const Message = S.Union([
   ClickedLink,
@@ -49,6 +50,7 @@ export const Message = S.Union([
   UpdatedLastNameInput,
   SubmittedCreateForm,
   SucceededCreateUser,
+  FailedCreateUser,
 ]);
 export type Message = typeof Message.Type;
 
@@ -79,11 +81,11 @@ const LoadUser = Command.define("LoadUser", {
 
 const CreateUser = Command.define("CreateUser", {
   args: { firstName: S.String, lastName: S.String },
-  messages: [SucceededCreateUser, FailedLoadUsers],
+  messages: [SucceededCreateUser, FailedCreateUser],
   execute: ({ firstName, lastName }) =>
     createUser(firstName, lastName).pipe(
       Effect.map((user) => SucceededCreateUser({ user })),
-      Effect.catch((error) => Effect.succeed(FailedLoadUsers({ error: describe(error) }))),
+      Effect.catch((error) => Effect.succeed(FailedCreateUser({ error: describe(error) }))),
     ),
 });
 
@@ -187,6 +189,12 @@ export const update = (model: Model, message: Message): UpdateReturn =>
           [CreateUser({ firstName: model.firstNameInput, lastName: model.lastNameInput })],
         ];
       },
+
+      // Surface a create failure in the list's error slot.
+      FailedCreateUser: ({ error }) => [
+        evo(model, { users: () => UsersAsyncData.Failure({ error }) }),
+        [],
+      ],
 
       // Jump straight to the new user's page; its route load refetches.
       SucceededCreateUser: ({ user }) => [

@@ -1,13 +1,15 @@
 // The client end of the wire. `Domain.wireClient` recovers exact
 // `domain.execute` typing — operation names, args, selections,
 // selection-dependent result types — from the domain itself; this file only
-// supplies the transport: POST the dispatch envelope to /rpc. Successes are
-// plain selected data trees; failures arrive typed (UserNotFound).
+// supplies the transport: POST the dispatch envelope to /rpc. Every response
+// is decoded through the domain's own response codec inside `wireClient`, so
+// successes arrive as plain typed selection trees and failures as typed
+// errors (UserNotFound) — no second decode needed here.
 import { Effect, Schema, Stream } from "effect";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 import { Http } from "foldkit";
 import { Domain, type DispatchRequest } from "../../../src/index.ts";
-import { domain, UserNotFound } from "../../domain.ts";
+import { domain } from "../../domain.ts";
 
 const transport = {
   execute: (request: DispatchRequest) =>
@@ -28,14 +30,8 @@ const transport = {
 
 export const client = Domain.wireClient(domain, transport);
 
-const decoded = <A, I, E>(
-  effect: Effect.Effect<unknown, E>,
-  schema: Schema.Codec<A, I>,
-): Effect.Effect<A, E | Schema.SchemaError> =>
-  effect.pipe(Effect.flatMap(Schema.decodeUnknownEffect(schema)));
-
-// One UI-facing effect per screen need: each picks its own selection, so a
-// screen fetches exactly the fields it renders.
+// These schemas exist for the Foldkit side (Message payloads, AsyncData) —
+// the wire results below already conform to them without decoding.
 export const UserSummary = Schema.Struct({
   id: Schema.String,
   fullName: Schema.String,
@@ -53,32 +49,25 @@ export const UserDetail = Schema.Struct({
 });
 export type UserDetail = typeof UserDetail.Type;
 
-export const listUsers = decoded(
-  client.execute("listUsers", { select: { id: true, fullName: true } }),
-  Schema.Array(UserSummary),
-);
+// One UI-facing effect per screen need: each picks its own selection, so a
+// screen fetches exactly the fields it renders.
+export const listUsers = client.execute("listUsers", {
+  select: { id: true, fullName: true },
+});
 
 export const getUser = (id: string) =>
-  decoded(
-    client.execute("getUser", {
-      args: { id },
-      select: {
-        id: true,
-        fullName: true,
-        greeting: { args: { salutation: "Hello" } },
-        profile: { select: { bio: true, location: true } },
-      },
-    }),
-    UserDetail,
-  );
+  client.execute("getUser", {
+    args: { id },
+    select: {
+      id: true,
+      fullName: true,
+      greeting: { args: { salutation: "Hello" } },
+      profile: { select: { bio: true, location: true } },
+    },
+  });
 
 export const createUser = (firstName: string, lastName: string) =>
-  decoded(
-    client.execute("createUser", {
-      args: { firstName, lastName },
-      select: { id: true, fullName: true },
-    }),
-    UserSummary,
-  );
-
-export { UserNotFound };
+  client.execute("createUser", {
+    args: { firstName, lastName },
+    select: { id: true, fullName: true },
+  });

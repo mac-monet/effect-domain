@@ -171,19 +171,22 @@ function makeDomainWithLayers<
   // A field's typed failure fails the whole operation, so the wire cause
   // schema is the operation's declared errors plus every reachable field's.
   // Memoized per operation — reachability is selection-independent.
-  const causeSchemas = new Map<string, Schema.Top>();
+  // Reachable field errors depend only on the operation's root type, so
+  // they're memoized per operation; the declared/override union on top is
+  // rebuilt per call (cheap, and overrides must never hit a cache).
+  const fieldErrorCache = new Map<string, ReadonlyArray<Schema.Top>>();
   function operationCauseSchema(
     name: string,
     op: AnyOperationDef,
     operationErrorOverride?: Schema.Top,
   ): Schema.Top {
-    const cached = operationErrorOverride === undefined ? causeSchemas.get(name) : undefined;
-    if (cached) return cached;
-    const fieldErrors = reachableFieldErrorSchemas(registry, op.type.ast);
+    let fieldErrors = fieldErrorCache.get(name);
+    if (!fieldErrors) {
+      fieldErrors = reachableFieldErrorSchemas(registry, op.type.ast);
+      fieldErrorCache.set(name, fieldErrors);
+    }
     const declared = operationErrorOverride ?? op.error ?? Schema.Never;
-    const built = fieldErrors.length === 0 ? declared : Schema.Union([declared, ...fieldErrors]);
-    if (operationErrorOverride === undefined) causeSchemas.set(name, built);
-    return built;
+    return fieldErrors.length === 0 ? declared : Schema.Union([declared, ...fieldErrors]);
   }
 
   function executeBoundary(decoded: BoundaryDecoded, options?: DispatchOptions) {

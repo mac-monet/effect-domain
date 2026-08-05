@@ -38,8 +38,12 @@ Fundamental representation change: **projections are plain data**.
   schema into the operation's failure codec; `Domain.MissingErrorSchemas`
   (and therefore `wireClient`/`handleDispatch`) rejects fallible fields
   without one at compile time.
-- `NodeMeta` phantom on `node()` types carrying field defs to the type level
-  (`NodeE`/`NodeR`), plus `reachableFieldErrorSchemas` on the registry.
+- `reachableFieldErrorSchemas(registry, rootAst)` — the field error schemas
+  the wire handlers union into an operation's failure codec, exported for
+  adapters composing their own failure codecs (`errorSchema(name)` alone
+  returns only the operation-declared schema). The `NodeMeta` phantom
+  carrying field defs to the type level (`NodeE`/`NodeR`) is internal
+  mechanism, not public API.
 
 ### Migration notes
 

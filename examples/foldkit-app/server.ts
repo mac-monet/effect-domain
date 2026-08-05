@@ -16,6 +16,9 @@ const Routes = HttpRouter.addAll([
     "/rpc",
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
+      // Shape-only widening of parsed JSON: `handleDispatch` is the actual
+      // boundary — it validates the name, args, and selection and rejects
+      // bad requests as typed GatewayErrors inside the envelope.
       const body = ((yield* request.json) ?? {}) as {
         readonly name?: string;
         readonly args?: unknown;

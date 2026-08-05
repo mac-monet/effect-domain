@@ -9,7 +9,7 @@ export type {
   OperationDefinition,
   SubscriptionDef,
 } from "./define.ts";
-export { buildRegistry } from "./registry.ts";
+export { buildRegistry, reachableFieldErrorSchemas } from "./registry.ts";
 export type {
   NodeReference,
   NodeRegistry,

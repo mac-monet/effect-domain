@@ -27,9 +27,10 @@ export type DeclaredErrorType<Op> = [ExtractErrorSchema<Op>] extends [never]
     : never;
 
 /**
- * The operation names whose resolvers can fail (`E` is not `never`) but that
- * declared no `error` schema — the ops whose failures cannot round-trip a
- * wire. Adapters constrain on `[MissingErrorSchemas<Ops>] extends [never]`
+ * The operation names whose failures cannot round-trip a wire: a resolver
+ * that can fail (`E` is not `never`) without a declared `error` schema, or a
+ * reachable computed field that can fail without a declared `field({ error })`
+ * schema. Adapters constrain on `[MissingErrorSchemas<Ops>] extends [never]`
  * to turn a missing declaration into a compile error at the adapter boundary.
  *
  * Only meaningful for concrete op records: erased `AnyOperationDef` records
@@ -49,8 +50,9 @@ export type MissingErrorSchemas<Ops> = {
 /**
  * Constraint for entry points that serialize failures — the wire handlers
  * (`handleDispatch`/`handleSubscription` via their `this` parameter) and
- * `Domain.wireClient`: satisfied only when every fallible operation declared
- * an `error` schema, otherwise the offending operation names surface in the
+ * `Domain.wireClient`: satisfied only when every fallible operation — and
+ * every fallible computed field it reaches — declared an `error` schema,
+ * otherwise the offending operation names surface in the
  * compile error. Applied at serialization boundaries, never at
  * `Domain.make` — domains used purely in-process shouldn't pay for schemas
  * they don't need.
@@ -110,6 +112,10 @@ type NodeFieldDefs<T> = T extends object
  * its own fields plus, recursively, the fields of node-typed values under any
  * key (data or computed, through arrays and nullables). This is what `node()`
  * erases from the value surface and the {@link NodeMeta} phantom preserves.
+ * Two deliberate recursion gaps (nodes below two anonymous-struct levels,
+ * doubly-nested arrays) are documented in the shape note above; they apply
+ * to every extractor in this family (`NodeE`, `NodeUndeclaredE`,
+ * `NodeDeclaredE`).
  */
 export type NodeR<T> = T extends unknown ? NodeROf<T> : never;
 type NodeROf<T> = [NodeFieldDefs<T>] extends [never]
@@ -181,11 +187,7 @@ type NodeUndeclaredEOf<T> = [NodeFieldDefs<T>] extends [never]
  * unions these schemas into the operation's wire cause codec.
  */
 export type NodeDeclaredE<T> = T extends unknown ? NodeDeclaredEOf<T> : never;
-type DeclaredTypeOf<ErrS> = [ErrS] extends [never]
-  ? never
-  : ErrS extends { readonly Type: infer ErrT }
-    ? ErrT
-    : never;
+type DeclaredTypeOf<ErrS> = ErrS extends { readonly Type: infer ErrT } ? ErrT : never;
 type NodeDeclaredEOf<T> = [NodeFieldDefs<T>] extends [never]
   ? T extends readonly unknown[]
     ? never
@@ -447,7 +449,3 @@ export type DomainRootSelectedOf<T, S> =
         : [NonNullish<T>] extends [Record<string, any>]
           ? DomainSelectedOf<NonNullish<T>, S>
           : T;
-
-export type ExecuteConfig<T, Args, S> = DomainExecuteConfig<T, Args, S>;
-export type SelectedOf<T, S> = DomainSelectedOf<T, S>;
-export type RootSelectedOf<T, S> = DomainRootSelectedOf<T, S>;

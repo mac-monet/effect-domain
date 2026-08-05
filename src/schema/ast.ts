@@ -78,6 +78,21 @@ export function nonNullishMembers(union: SchemaAST.Union): ReadonlyArray<SchemaA
   return union.types.filter((member) => !isNullishAst(member)).map(unwrapType);
 }
 
+// Undefined can reach a value slot three ways: the union-variant sentinel, a
+// Void/Undefined-typed field, or a union with such a member
+// (Schema.UndefinedOr). The response codec makes any such slot an optional
+// key. `seen` guards recursive unions reachable through suspends, which
+// unwrapType canonicalizes back to the same AST.
+export function admitsUndefinedAst(ast: SchemaAST.AST, seen?: Set<SchemaAST.AST>): boolean {
+  const typeAst = unwrapType(ast);
+  if (SchemaAST.isUndefined(typeAst) || SchemaAST.isVoid(typeAst)) return true;
+  if (!SchemaAST.isUnion(typeAst)) return false;
+  const visited = seen ?? new Set();
+  if (visited.has(typeAst)) return false;
+  visited.add(typeAst);
+  return typeAst.types.some((member) => admitsUndefinedAst(member, visited));
+}
+
 export function nonNullishRootAst(ast: SchemaAST.AST): SchemaAST.AST {
   const typeAst = unwrapType(ast);
   if (isNullishAst(typeAst)) return Schema.Never.ast;

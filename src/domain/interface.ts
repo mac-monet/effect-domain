@@ -150,6 +150,11 @@ export interface DomainInstance<
    * whose errors must cross a wire; `Domain.MissingErrorSchemas` turns the
    * omission into a compile error at adapter boundaries.
    *
+   * This is the *operation-declared* schema only. The wire failure codecs
+   * additionally union in every reachable field's declared error schema — an
+   * adapter composing its own failure codec should do the same via
+   * `reachableFieldErrorSchemas(registry, rootAst)`.
+   *
    * Throws synchronously if `name` is not an operation on this graph.
    */
   errorSchema<K extends string & keyof Ops>(

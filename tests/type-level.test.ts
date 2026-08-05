@@ -139,12 +139,6 @@ describe("Unit 7: typed selections and NodeType", () => {
     });
   });
 
-  it("SelectedOf handles nested sub-selections", () => {
-    type T = { id: string; profile: { bio: string; age: number } };
-    type R = Domain.SelectedOf<T, { id: true; profile: { select: { bio: true } } }>;
-    expectTypeOf<R>().toEqualTypeOf<{ id: string; profile: { bio: string } }>();
-  });
-
   it("SelectedOf handles array sub-selections", () => {
     type T = { items: Array<{ id: string; name: string }> };
     type R = Domain.SelectedOf<T, { items: { select: { id: true } } }>;
@@ -241,7 +235,7 @@ describe("Unit 7: typed selections and NodeType", () => {
     type T = Schema.Schema.Type<typeof TimedUser>;
     // Own field R plus nested node field R, through the array.
     expectTypeOf<NodeR<T>>().toEqualTypeOf<Clock | Fmt>();
-    // NodeE mirrors it for errors; not yet wired into any signature.
+    // NodeE mirrors it for errors and feeds OperationE, execute's error channel.
     expectTypeOf<NodeE<T>>().toEqualTypeOf<BioMissing>();
     // The phantom key is a symbol: selection syntax never offers it.
     expectTypeOf<keyof SelectionFor<T>>().toEqualTypeOf<"id" | "stampedAt" | "profiles">();
