@@ -51,11 +51,21 @@ true })` records which entities each query touched, and `invalidate(entity)`
   re-runs exactly the dependent queries, emitting events only on change.
 - `foldkit-app/` — a complete browser frontend (Foldkit, Elm-architecture)
   over the dynamic gateway. The server is one POST /rpc route through
-  `domain.handleDispatch(...)`; the client is `Domain.client(...)` with a
-  fetch transport, so every screen picks its own selection and declared
-  errors (UserNotFound) arrive typed. `dataForRoute` maps each route to its
-  dispatches — the seam a server render would reuse. Run `bun run server`
-  and `bun run dev` from inside the directory.
+  `domain.handleDispatch(...)`; the client is
+  `Domain.client(domain, Domain.transportHttp("/rpc"))` behind an
+  `AppClient` service tag filled via foldkit's `resources` Layer, so every
+  screen picks its own selection and declared errors (UserNotFound) arrive
+  typed. `dataForRoute` maps each route to its dispatches — the seam a
+  server render would reuse. Run `bun run server` and `bun run dev` from
+  inside the directory.
+- `foldkit-ssr-app/` — the same app, server-rendered and hydrated (needs
+  unreleased foldkit SSR; see its README). The hydration payload is a
+  domain projection, and the server entry fills the same `AppClient` tag
+  with the in-process `Domain.client(domain)` to run the exact effects the
+  browser's Commands run — no wire, same codec round-trip.
+- `foldkit-server-app/` — the same app fully server-generated: no client
+  runtime, no /rpc, no JavaScript shipped. Every interaction is plain HTTP
+  and the data layer is just selections + `domain.execute`.
 
 The fixed HTTP/RPC examples use `domain.bind(...)`, `domain.argsSchema(...)`, and
 `domain.responseSchema(...)` when the interface owns the operation and selection.

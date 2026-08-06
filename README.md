@@ -143,22 +143,33 @@ const handler = Effect.gen(function* () {
 send", and it returns a client with full `domain.execute` /
 `domain.subscribe` typing — names, args, selections, selection-dependent
 result types. Successes arrive as plain selected data trees; failures decode
-back into live error-class instances:
+back into live error-class instances. `Domain.transportHttp(url)` is the
+canonical "how to send" (POST each envelope as JSON, fetch-backed,
+wire-level failures as `Domain.TransportError`); any `WireTransport` object
+works for other protocols:
 
 ```ts
-const client = Domain.client(domain, {
+const client = Domain.client(domain, Domain.transportHttp("/rpc"));
+
+// or hand the envelope to any protocol yourself:
+const rpc = Domain.client(domain, {
   execute: (request) => rpcClient.DomainExecute(request),
   subscribe: (request) => rpcClient.DomainSubscribe(request),
 });
 
 const program = Effect.gen(function* () {
-  // fails with UserNotFound | GatewayError | ... — all typed
+  // fails with UserNotFound | GatewayError | TransportError | ... — all typed
   return yield* client.execute("getUser", {
     args: { id: "1" },
     select: { id: true, fullName: true },
   });
 });
 ```
+
+`Domain.client(domain)` — no transport — is the in-process client: the same
+typed surface glued to `handleDispatch` / `handleSubscription` on the same
+instance, so a server entry (SSR, tests, background jobs) runs the exact
+calls the browser runs, wire codec round-trip included, with no wire.
 
 Serializing failures requires each fallible operation — and each fallible
 computed field — to declare an `error` schema (`operation({ error:

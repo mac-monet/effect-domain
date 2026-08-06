@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.4.0
+
+The client becomes swappable end to end: one typed surface, three ways to
+fill it — HTTP, any custom transport, or no wire at all.
+
+### Added
+
+- **`Domain.client(domain)` — the in-process client.** The one-argument form
+  glues the transport to `handleDispatch` / `handleSubscription` on the same
+  instance: every call still round-trips the wire codec (encode → decode in
+  memory) and is typed identically to the remote client, so a server entry
+  (SSR, tests, background jobs) runs the exact calls the browser runs. Its
+  error channel carries the domain's `ProvidedE`; its `R` the domain's
+  unprovided services.
+- **`Domain.transportHttp(url, options?)`** — the canonical HTTP transport:
+  POST each dispatch envelope as JSON to one endpoint. Backed by effect's
+  `HttpClient`, self-provided from `FetchHttpClient.layer` by default
+  (browser, Bun, Node 18+, edge runtimes); pass `httpClient` to supply your
+  own layer for middleware or tests, `headers` for static headers.
+  Subscriptions are not supported by this transport and fail with a clear
+  error.
+- **`Domain.TransportError`** — the wire itself failed (network error,
+  non-JSON body, non-2xx status; `status` is set when a response arrived).
+  Domain and gateway errors never surface here — they travel inside the
+  envelope as their own types.
+- **`Domain.Client<D, TE?, R?>`** — the client type for a domain instance;
+  what an app-level `Context` tag holds so entries can swap client layers
+  (in-process vs wire) without touching call sites.
+- **`WireClient` gained an `R` type parameter** (default `never`; existing
+  code unaffected) so the in-process client's service requirements are
+  visible in its effect types.
+
+### Changed
+
+- `src/domain/wire-client.ts` is now `src/domain/client.ts`; transports live
+  in `src/domain/transport.ts`. Public API paths are unchanged (everything
+  is re-exported through `Domain`).
+- The foldkit examples now put the client behind an `AppClient` service tag
+  (filled via foldkit's `resources` Layer in the browser, the in-process
+  client on the server) and build the wire with `Domain.transportHttp`. The
+  `foldkit-ssr-app` example is back: server-rendered and hydrated, with the
+  hydration payload as a domain projection and both entries filling the same
+  client seam.
+
 ## 0.3.0
 
 ### Breaking

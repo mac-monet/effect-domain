@@ -1,6 +1,6 @@
 {
   "name": "effect-domain",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Domain action graph for Effect: define your model once, project it through REST, RPC, dynamic dispatch, and typed wire clients.",
   "keywords": [
     "domain",
