@@ -14,7 +14,7 @@ export default defineConfig({
     exports: true,
   },
   lint: {
-    ignorePatterns: ["examples/foldkit-app"],
+    ignorePatterns: ["examples/foldkit-app", "examples/foldkit-ssr-app"],
     options: {
       typeAware: true,
       typeCheck: true,
