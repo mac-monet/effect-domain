@@ -1,15 +1,24 @@
 # foldkit-ssr-app
 
-The [foldkit-app](../foldkit-app) example, server-rendered and hydrated. The
-point of interest: **the hydration payload is a domain projection.** `Flags`
-is built from `domain.responseSchema` values, so the server encodes what it
-fetched with the domain's own wire codec, and the hydrating browser decodes it
-with the same cached schema object and runs the same `init`. Server HTML,
-hydration payload, and browser state are all projections of one selection.
+The [foldkit-app](../foldkit-app) example, server-rendered and hydrated. Two
+points of interest:
 
-- `src/entry.server.ts` — the server boundary: route → `domain.execute`
-  (in-process, same selections the client's Commands use) → Flags →
-  `Server.renderToString`.
+**The hydration payload is a domain projection.** `Flags` is built from
+`domain.responseSchema` values, so the server encodes what it fetched with
+the domain's own wire codec, and the hydrating browser decodes it with the
+same cached schema object and runs the same `init`. Server HTML, hydration
+payload, and browser state are all projections of one selection.
+
+**The client is a service.** `src/domain-client.ts` puts the typed client
+behind an `AppClient` tag; Commands `yield*` the tag instead of importing a
+baked-in transport. The browser fills the seam with the HTTP wire client
+through foldkit's `resources` Layer; the server entry runs the same calls
+through the in-process `Domain.client(domain)` — same typed surface, same
+wire-codec round-trip, no HTTP hop. Tests can fill it with a stub.
+
+- `src/entry.server.ts` — the server boundary: route → in-process
+  `Domain.client(domain)` (same selections and decode path as the browser's
+  Commands) → Flags → `Server.renderToString`.
 - `server/main.ts` — one bun process owning the repo: `POST /rpc` via
   `handleDispatch`, static assets, SSR for everything else. One process on
   purpose: the in-memory repo must be shared between renders and the wire.

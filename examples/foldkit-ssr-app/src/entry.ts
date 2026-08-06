@@ -1,5 +1,6 @@
 import { Runtime } from "foldkit";
 
+import { AppClientHttp } from "./domain-client";
 import { ChangedUrl, ClickedLink, Flags, Model, flags, init, update, view } from "./main";
 
 const application = Runtime.makeApplication({
@@ -9,6 +10,9 @@ const application = Runtime.makeApplication({
   init,
   update,
   view,
+  // The browser's answer to the AppClient seam: the HTTP wire client,
+  // constructed once and shared by every Command.
+  resources: AppClientHttp,
   container: document.getElementById("root"),
   routing: {
     onUrlRequest: (request) => ClickedLink({ request }),

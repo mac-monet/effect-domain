@@ -3,4 +3,4 @@ dist
 *.log
 .DS_Store
 .npmrc
-examples/foldkit-ssr-app/vendor/
+examples/*/vendor/

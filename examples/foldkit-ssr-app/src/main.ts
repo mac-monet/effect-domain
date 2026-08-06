@@ -6,7 +6,14 @@ import { UrlRequest, load, pushUrl } from "foldkit/navigation";
 import { evo } from "foldkit/struct";
 import { Url, toString as urlToString } from "foldkit/url";
 
-import { UserDetail, UserSummary, createUser, getUser, listUsers } from "./domain-client";
+import {
+  AppClient,
+  UserDetail,
+  UserSummary,
+  createUser,
+  getUser,
+  listUsers,
+} from "./domain-client";
 import { AppRoute, homeRouter, urlToAppRoute, userRouter } from "./route";
 
 // MODEL
@@ -103,7 +110,9 @@ const LoadExternal = Command.define("LoadExternal", {
 
 // Every route's data needs in one place: the mapping a server render would
 // run ahead of time is the same one the client runs on navigation.
-const dataForRoute = (route: typeof AppRoute.Type): ReadonlyArray<Command.Command<Message>> =>
+const dataForRoute = (
+  route: typeof AppRoute.Type,
+): ReadonlyArray<Command.Command<Message, never, AppClient>> =>
   M.value(route).pipe(
     M.tagsExhaustive({
       Home: () => [LoadUsers()],
@@ -144,7 +153,7 @@ export const flags: Effect.Effect<Flags> = Effect.succeed({
 
 // INIT
 
-export const init: Runtime.RoutingApplicationInit<Model, Message, Flags> = (
+export const init: Runtime.RoutingApplicationInit<Model, Message, Flags, AppClient> = (
   flags: Flags,
   url: Url,
 ) => {
@@ -171,7 +180,7 @@ export const init: Runtime.RoutingApplicationInit<Model, Message, Flags> = (
 
 // UPDATE
 
-type UpdateReturn = readonly [Model, ReadonlyArray<Command.Command<Message>>];
+type UpdateReturn = readonly [Model, ReadonlyArray<Command.Command<Message, never, AppClient>>];
 const withUpdateReturn = M.withReturnType<UpdateReturn>();
 
 export const update = (model: Model, message: Message): UpdateReturn =>
