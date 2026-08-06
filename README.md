@@ -162,7 +162,7 @@ const program = Effect.gen(function* () {
 
 Serializing failures requires each fallible operation — and each fallible
 computed field — to declare an `error` schema (`operation({ error:
-UserNotFound, ... })`, `field({ error: ..., ... })`); `client` enforces
+UserNotFound, ... })`, `field({ error: ..., ... })`); `Domain.client` enforces
 this at compile time, naming any operation that is missing one. A field's
 typed failure fails the whole operation, so it arrives as that operation's
 `OperationError` cause.
