@@ -180,9 +180,12 @@ export interface DomainInstance<
   >;
   /**
    * Returns a runtime Schema for the exact response shape produced by an
-   * operation and a validated root selection. This is primarily for clients
-   * that need to decode wire payloads back into live `Result` / `Option`
-   * prototypes.
+   * operation and a validated root selection: the plain selected tree, with
+   * the wire JSON on the encoded side. This is the success half of the codec
+   * `Domain.client` decodes with — the same cached object —
+   * so a value from `execute` conforms by construction. Use it wherever a
+   * projection needs a schema value rather than just a type: UI state
+   * containers, persistence, hydration payloads, fixture validation.
    *
    * Response schemas are memoized by operation AST and canonicalized selection.
    * Prefer using this for fixed or already-validated selections during adapter

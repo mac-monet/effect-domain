@@ -30,7 +30,7 @@ The other files expose or consume that graph without redefining the domain model
   schemas.
 - `rpc-dispatch.ts` — dynamic Effect RPC gateway: the whole domain behind two
   static procedures. The server forwards to `domain.handleDispatch(...)` /
-  `handleSubscription(...)`; the client is `Domain.wireClient(...)`, which
+  `handleSubscription(...)`; the client is `Domain.client(...)`, which
   recovers exact `domain.execute` / `domain.subscribe` typing over the wire.
   The file itself is only the RPC transport glue.
 - `mcp-dispatch.ts` — MCP server via Effect's built-in `McpServer`: every
@@ -51,7 +51,7 @@ true })` records which entities each query touched, and `invalidate(entity)`
   re-runs exactly the dependent queries, emitting events only on change.
 - `foldkit-app/` — a complete browser frontend (Foldkit, Elm-architecture)
   over the dynamic gateway. The server is one POST /rpc route through
-  `domain.handleDispatch(...)`; the client is `Domain.wireClient(...)` with a
+  `domain.handleDispatch(...)`; the client is `Domain.client(...)` with a
   fetch transport, so every screen picks its own selection and declared
   errors (UserNotFound) arrive typed. `dataForRoute` maps each route to its
   dispatches — the seam a server render would reuse. Run `bun run server`

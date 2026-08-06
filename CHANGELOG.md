@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+### Breaking
+
+- `Domain.wireClient` is now `Domain.client`. Rename only — same signature,
+  same transport contract. The old name read as a verb phrase ("wire a
+  client"); the `transport` argument already says it crosses a wire.
+
 ## 0.2.0
 
 Fundamental representation change: **projections are plain data**.

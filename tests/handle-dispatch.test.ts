@@ -134,11 +134,11 @@ describe("handleSubscription", () => {
   });
 });
 
-// wireClient glued directly to handleDispatch/handleSubscription: the two
+// client glued directly to handleDispatch/handleSubscription: the two
 // ends of the wire with no transport in between. If this round-trips, any
 // transport that faithfully moves the envelope round-trips too.
-describe("wireClient over handleDispatch (in-process wire)", () => {
-  const client = Domain.wireClient(domain, {
+describe("client over handleDispatch (in-process wire)", () => {
+  const client = Domain.client(domain, {
     execute: (request) => liveDomain.handleDispatch(request),
     subscribe: (request) => liveDomain.handleSubscription(request),
   });

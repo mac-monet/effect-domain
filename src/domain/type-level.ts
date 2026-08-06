@@ -50,7 +50,7 @@ export type MissingErrorSchemas<Ops> = {
 /**
  * Constraint for entry points that serialize failures — the wire handlers
  * (`handleDispatch`/`handleSubscription` via their `this` parameter) and
- * `Domain.wireClient`: satisfied only when every fallible operation — and
+ * `Domain.client`: satisfied only when every fallible operation — and
  * every fallible computed field it reaches — declared an `error` schema,
  * otherwise the offending operation names surface in the
  * compile error. Applied at serialization boundaries, never at

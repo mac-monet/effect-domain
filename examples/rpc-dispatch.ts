@@ -1,7 +1,7 @@
 // Dynamic typed RPC: the whole domain behind two static procedures
 // (DomainExecute, DomainSubscribe). The server side is
 // `domain.handleDispatch` / `handleSubscription`; the client side is
-// `Domain.wireClient`, which recovers exact `domain.execute` /
+// `Domain.client`, which recovers exact `domain.execute` /
 // `domain.subscribe` typing from the domain itself. This file only supplies
 // the transport: how envelopes move over Effect RPC.
 //
@@ -58,7 +58,7 @@ export const makeDomainRpc = <Ops extends Record<string, AnyOperationDef>, Provi
     });
 
   const clientFrom = (client: RawRpcClient) =>
-    Domain.wireClient(dom, {
+    Domain.client(dom, {
       execute: (request) => client.DomainExecute(request),
       subscribe: (request) => client.DomainSubscribe(request),
     });

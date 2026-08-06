@@ -60,7 +60,7 @@ export namespace Domain {
    * Constraint for adapter entry points that serialize failures: satisfied
    * only when every fallible operation declared an `error` schema, otherwise
    * a compile error naming the operations. Apply at the adapter boundary,
-   * never at `Domain.make`. See {@link Domain.wireClient}.
+   * never at `Domain.make`. See {@link Domain.client}.
    *
    * @since 0.1.0
    * @category models
@@ -68,7 +68,7 @@ export namespace Domain {
   export type RequireErrorSchemas<Ops extends Record<string, AnyOperationDef>> =
     WireClientModule.RequireErrorSchemas<Ops>;
   /**
-   * What {@link Domain.wireClient} needs from a transport: send one dispatch
+   * What {@link Domain.client} needs from a transport: send one dispatch
    * envelope, return the raw response produced by `handleDispatch` /
    * `handleSubscription` on the server. `TE` is the transport's own failure
    * type and flows into the typed client's error channel.
@@ -79,7 +79,7 @@ export namespace Domain {
   export type WireTransport<TE> = WireClientModule.WireTransport<TE>;
   /**
    * A remote client with `domain.execute` / `domain.subscribe` parity,
-   * produced by {@link Domain.wireClient}.
+   * produced by {@link Domain.client}.
    *
    * @since 0.1.0
    * @category models
@@ -332,10 +332,10 @@ export namespace Domain {
    * Builds the typed client end of the wire from a domain and a transport —
    * the client mirror of `handleDispatch` / `handleSubscription`. The domain
    * supplies decoding and typing; the transport supplies only "how to send".
-   * See {@link WireClientModule.wireClient} for the full contract.
+   * See {@link WireClientModule.client} for the full contract.
    *
    * @since 0.1.0
    * @category constructors
    */
-  export const wireClient = WireClientModule.wireClient;
+  export const client = WireClientModule.client;
 }

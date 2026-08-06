@@ -139,14 +139,14 @@ const handler = Effect.gen(function* () {
 });
 ```
 
-`Domain.wireClient(...)` is the client mirror. Give it the domain and "how to
+`Domain.client(...)` is the client mirror. Give it the domain and "how to
 send", and it returns a client with full `domain.execute` /
 `domain.subscribe` typing — names, args, selections, selection-dependent
 result types. Successes arrive as plain selected data trees; failures decode
 back into live error-class instances:
 
 ```ts
-const client = Domain.wireClient(domain, {
+const client = Domain.client(domain, {
   execute: (request) => rpcClient.DomainExecute(request),
   subscribe: (request) => rpcClient.DomainSubscribe(request),
 });
@@ -162,7 +162,7 @@ const program = Effect.gen(function* () {
 
 Serializing failures requires each fallible operation — and each fallible
 computed field — to declare an `error` schema (`operation({ error:
-UserNotFound, ... })`, `field({ error: ..., ... })`); `wireClient` enforces
+UserNotFound, ... })`, `field({ error: ..., ... })`); `client` enforces
 this at compile time, naming any operation that is missing one. A field's
 typed failure fails the whole operation, so it arrives as that operation's
 `OperationError` cause.

@@ -20,7 +20,7 @@ export type RequireErrorSchemas<Ops extends Record<string, AnyOperationDef>> =
   DomainTypes.RequireErrorSchemas<Ops>;
 
 /**
- * What {@link wireClient} needs from a transport: send one dispatch envelope,
+ * What {@link client} needs from a transport: send one dispatch envelope,
  * return the raw (JSON-parsed but not schema-decoded) response the server
  * built with `handleDispatch` / `handleSubscription`. `TE` is the transport's
  * own failure type (RpcClientError, a fetch error, ...) and flows into the
@@ -99,7 +99,7 @@ export interface WireClient<Ops extends Record<string, AnyOperationDef>, TE = ne
  * @since 0.1.0
  * @category constructors
  */
-export const wireClient = <
+export const client = <
   Ops extends Record<string, AnyOperationDef>,
   Provided,
   ProvidedE,
