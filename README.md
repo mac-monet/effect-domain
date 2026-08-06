@@ -4,7 +4,7 @@ effect-domain is a domain action graph for Effect applications.
 
 Define resources, computed fields, actions, subscriptions, selections, and runtime schemas once with Effect Schema. Then expose or execute the same model through REST, RPC, GraphQL adapters, sync engines, workflows, jobs, or direct Effect services.
 
-The core idea is that the domain model is primary. Transports are projections of that model.
+The core idea is that the domain model is primary. Transports are projections of that model. For the longer version of that argument — including two Foldkit frontends built as projections of one domain — see [docs/projections.md](docs/projections.md).
 
 > **Status:** pre-release. The API is settling but not yet frozen. Install with `npm install effect-domain`; requires `effect@^4.0.0-beta.101` (Effect v4).
 
