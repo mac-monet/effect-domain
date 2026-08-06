@@ -56,7 +56,7 @@ type InvokeConfig<Op, S> = DomainTypes.DomainInvokeConfig<
  * @since 0.1.0
  * @category models
  */
-export interface WireClient<Ops extends Record<string, AnyOperationDef>, TE = never> {
+export interface WireClient<Ops extends Record<string, AnyOperationDef>, TE = never, R = never> {
   execute<
     K extends DomainTypes.OperationNamesByStream<Ops, false>,
     const S extends RootSelectionFor<DomainTypes.ExtractType<Ops[K]>>,
@@ -65,7 +65,8 @@ export interface WireClient<Ops extends Record<string, AnyOperationDef>, TE = ne
     config: InvokeConfig<Ops[K], S>,
   ): Effect.Effect<
     DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
-    ClientErrors<Ops[K], TE>
+    ClientErrors<Ops[K], TE>,
+    R
   >;
   subscribe<
     K extends DomainTypes.OperationNamesByStream<Ops, true>,
@@ -75,9 +76,33 @@ export interface WireClient<Ops extends Record<string, AnyOperationDef>, TE = ne
     config: InvokeConfig<Ops[K], S>,
   ): Stream.Stream<
     DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
-    ClientErrors<Ops[K], TE>
+    ClientErrors<Ops[K], TE>,
+    R
   >;
 }
+
+/**
+ * The client type for a given domain instance — what an app-level
+ * `Context.Tag` holds so entries can swap layers (in-process vs wire)
+ * without touching call sites:
+ *
+ * ```ts
+ * class AppClient extends Context.Tag("app/AppClient")<
+ *   AppClient,
+ *   Domain.Client<typeof domain>
+ * >() {}
+ * ```
+ *
+ * `TE` and `R` default to `never` (a fully-provided wire client); pin them
+ * to match the layers the tag will be provided with.
+ *
+ * @since 0.1.0
+ * @category models
+ */
+export type Client<D, TE = never, R = never> =
+  D extends DomainInstance<infer Ops, infer _P, infer _PE, infer _PR>
+    ? WireClient<Ops, TE, R>
+    : never;
 
 /**
  * Builds the typed client end of the wire from a domain and a transport.
@@ -96,10 +121,20 @@ export interface WireClient<Ops extends Record<string, AnyOperationDef>, TE = ne
  * ({@link RequireErrorSchemas}); without one, failures cannot round-trip
  * and construction is a compile error naming the operations.
  *
+ * The one-argument form is the in-process client: the transport is
+ * `handleDispatch` / `handleSubscription` on the same instance, so every
+ * call still round-trips the wire codec (encode → decode in memory) and is
+ * typed identically to the remote client — the server side of an app can
+ * run the exact calls the browser side runs. Its error channel carries the
+ * domain's `ProvidedE` and its `R` the domain's unprovided services.
+ *
  * @since 0.1.0
  * @category constructors
  */
-export const client = <
+export function client<Ops extends Record<string, AnyOperationDef>, Provided, ProvidedE, ProvidedR>(
+  dom: DomainInstance<Ops, Provided, ProvidedE, ProvidedR> & RequireErrorSchemas<Ops>,
+): WireClient<Ops, ProvidedE, Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR>;
+export function client<
   Ops extends Record<string, AnyOperationDef>,
   Provided,
   ProvidedE,
@@ -108,7 +143,25 @@ export const client = <
 >(
   dom: DomainInstance<Ops, Provided, ProvidedE, ProvidedR> & RequireErrorSchemas<Ops>,
   transport: WireTransport<TE>,
-): WireClient<Ops, TE> => {
+): WireClient<Ops, TE>;
+export function client<
+  Ops extends Record<string, AnyOperationDef>,
+  Provided,
+  ProvidedE,
+  ProvidedR,
+  TE,
+>(
+  dom: DomainInstance<Ops, Provided, ProvidedE, ProvidedR> & RequireErrorSchemas<Ops>,
+  maybeTransport?: WireTransport<TE>,
+): WireClient<Ops, TE> {
+  const transport: WireTransport<TE> =
+    maybeTransport ??
+    ({
+      execute: (request: DispatchRequest) => dom.handleDispatch(request),
+      subscribe: (request: DispatchRequest) => dom.handleSubscription(request),
+      // In-process transport: TE/R live on the effects, not the interface —
+      // the overload's return type restores them.
+    } as unknown as WireTransport<TE>);
   const decode = (name: string, select: unknown) =>
     Schema.decodeUnknownEffect(
       dom.dispatchResultSchemaDynamic(name, select as Selection | undefined),
@@ -137,4 +190,4 @@ export const client = <
           ),
         ),
   } as unknown as WireClient<Ops, TE>;
-};
+}

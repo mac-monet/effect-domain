@@ -134,14 +134,12 @@ describe("handleSubscription", () => {
   });
 });
 
-// client glued directly to handleDispatch/handleSubscription: the two
-// ends of the wire with no transport in between. If this round-trips, any
-// transport that faithfully moves the envelope round-trips too.
+// One-arg client: transport is handleDispatch/handleSubscription on the
+// same instance — the two ends of the wire with nothing in between. If this
+// round-trips, any transport that faithfully moves the envelope round-trips
+// too.
 describe("client over handleDispatch (in-process wire)", () => {
-  const client = Domain.client(domain, {
-    execute: (request) => liveDomain.handleDispatch(request),
-    subscribe: (request) => liveDomain.handleSubscription(request),
-  });
+  const client = Domain.client(liveDomain);
 
   it("types nested projections as plain data trees (regression: Omit broke const-S inference)", () => {
     const eff = client.execute("getUser", {

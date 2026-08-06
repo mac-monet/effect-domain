@@ -1,0 +1,24 @@
+{
+  "name": "foldkit-ssr-app-example",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build --outDir dist/client",
+    "start": "bun run server/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "effect": "4.0.0-beta.103",
+    "foldkit": "file:./vendor/foldkit.tgz"
+  },
+  "devDependencies": {
+    "@foldkit/vite-plugin": "file:./vendor/foldkit-vite-plugin.tgz",
+    "@types/bun": "^1.3.14",
+    "happy-dom": "^20.10.4",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.9"
+  }
+}

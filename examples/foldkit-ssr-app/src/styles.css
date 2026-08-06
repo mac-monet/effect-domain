@@ -1,0 +1,83 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #1a1a2e;
+}
+
+body {
+  margin: 0;
+  background: #f7f7f9;
+}
+
+.app {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.app header {
+  margin-bottom: 2rem;
+}
+
+.app header a {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: inherit;
+  text-decoration: none;
+}
+
+.create-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.create-form input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.create-form button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  background: #4f46e5;
+  color: white;
+  cursor: pointer;
+}
+
+.user-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.user-list a {
+  color: #4f46e5;
+}
+
+.user-card {
+  background: white;
+  border: 1px solid #e5e5ec;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.user-card h2 {
+  margin-top: 0;
+}
+
+.location {
+  color: #6b7280;
+}
+
+.status {
+  color: #6b7280;
+}
+
+.status.error {
+  color: #b91c1c;
+}

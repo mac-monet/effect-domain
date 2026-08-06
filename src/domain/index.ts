@@ -13,7 +13,8 @@ import {
 import type { DomainInstance } from "./interface.ts";
 import { makeDomain } from "./runtime.ts";
 import type * as DomainTypes from "./type-level.ts";
-import * as WireClientModule from "./wire-client.ts";
+import * as ClientModule from "./client.ts";
+import * as TransportModule from "./transport.ts";
 
 export type { DomainInstance, PreparedDispatch } from "./interface.ts";
 
@@ -66,7 +67,7 @@ export namespace Domain {
    * @category models
    */
   export type RequireErrorSchemas<Ops extends Record<string, AnyOperationDef>> =
-    WireClientModule.RequireErrorSchemas<Ops>;
+    ClientModule.RequireErrorSchemas<Ops>;
   /**
    * What {@link Domain.client} needs from a transport: send one dispatch
    * envelope, return the raw response produced by `handleDispatch` /
@@ -76,7 +77,7 @@ export namespace Domain {
    * @since 0.1.0
    * @category models
    */
-  export type WireTransport<TE> = WireClientModule.WireTransport<TE>;
+  export type WireTransport<TE> = ClientModule.WireTransport<TE>;
   /**
    * A remote client with `domain.execute` / `domain.subscribe` parity,
    * produced by {@link Domain.client}.
@@ -87,7 +88,17 @@ export namespace Domain {
   export type WireClient<
     Ops extends Record<string, AnyOperationDef>,
     TE = never,
-  > = WireClientModule.WireClient<Ops, TE>;
+    R = never,
+  > = ClientModule.WireClient<Ops, TE, R>;
+  /**
+   * The client type for a given domain instance — what an app-level
+   * `Context.Tag` holds so entries can swap client layers (in-process vs
+   * wire) without touching call sites. See {@link ClientModule.Client}.
+   *
+   * @since 0.1.0
+   * @category models
+   */
+  export type Client<D, TE = never, R = never> = ClientModule.Client<D, TE, R>;
   /**
    * Envelope returned by `execute(name, { ..., reads: true })`: the
    * operation result plus per-execution artifacts (currently the walk's
@@ -332,10 +343,30 @@ export namespace Domain {
    * Builds the typed client end of the wire from a domain and a transport —
    * the client mirror of `handleDispatch` / `handleSubscription`. The domain
    * supplies decoding and typing; the transport supplies only "how to send".
-   * See {@link WireClientModule.client} for the full contract.
+   * The one-argument form is the in-process client: same typed surface,
+   * transport glued to `handleDispatch` / `handleSubscription` on the same
+   * instance. See {@link ClientModule.client} for the full contract.
    *
    * @since 0.1.0
    * @category constructors
    */
-  export const client = WireClientModule.client;
+  export const client = ClientModule.client;
+  /**
+   * The canonical HTTP transport for {@link Domain.client}: POST each
+   * dispatch envelope as JSON to one endpoint. Self-contained (fetch-backed)
+   * by default; see {@link TransportModule.transportHttp} for options.
+   *
+   * @since 0.1.0
+   * @category constructors
+   */
+  export const transportHttp = TransportModule.transportHttp;
+  /**
+   * The wire itself failed: network error, non-JSON body, non-2xx status.
+   * See {@link TransportModule.TransportError}.
+   *
+   * @since 0.1.0
+   * @category errors
+   */
+  export const TransportError = TransportModule.TransportError;
+  export type TransportError = TransportModule.TransportError;
 }
