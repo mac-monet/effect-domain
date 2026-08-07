@@ -11,18 +11,20 @@
 // selection); scalar operations take none.
 import { Effect, Layer, Schema } from "effect";
 import { McpServer, Tool, Toolkit } from "effect/unstable/ai";
-import type { WireShape } from "../src/index.ts";
+import { Domain, type WireShape } from "../src/index.ts";
 import { domain, UserRepoLive } from "./domain.ts";
 
 const liveDomain = domain.provide(UserRepoLive);
+// The erased surface accepts runtime name strings — the right view for an
+// adapter that discovers operations via inspect().
+const erased = Domain.erase(liveDomain);
 
 const operations = liveDomain.inspect().operations.filter((op) => !op.stream);
 
 // The domain's args schemas are ordinary Effect Schemas, so JSON Schema
 // export is one call; fold `$defs` in when the schema references any.
 const argsJsonSchema = (name: string) => {
-  // Names come from inspect() at runtime, so widen past the typed name union.
-  const doc = Schema.toJsonSchemaDocument(liveDomain.argsSchema(name as never));
+  const doc = Schema.toJsonSchemaDocument(erased.argsSchema(name));
   return Object.keys(doc.definitions).length === 0
     ? doc.schema
     : { ...doc.schema, $defs: doc.definitions };
