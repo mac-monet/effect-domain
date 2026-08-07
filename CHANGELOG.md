@@ -16,6 +16,16 @@
   decodes with its own `(name, select)` codec — no transport or wire-format
   changes. Entries carry only `args`/`select`; subscriptions are excluded.
 
+- **Array forms of `dispatch` and `handleDispatch`.** `domain.dispatch([env1,
+env2])` returns the per-envelope `Result`s in entry order — one entry's
+  failure sits in its own `Result` while siblings succeed (no fail-fast).
+  `domain.handleDispatch([env1, env2])` returns the encoded dispatch-Result
+  envelopes in entry order, with failures encoded inside their own envelope
+  and the error channel unchanged. Entries run concurrently (unbounded) in
+  one fiber tree, sharing the request-batching window; the options parameter
+  is the same per-envelope `DispatchOptions`/`WireDispatchOptions`, applied
+  to every entry. An empty array succeeds with `[]`.
+
 ### Breaking
 
 - **Omitted `select` on node roots is now an error.** Previously an omitted

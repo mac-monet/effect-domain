@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import { describe, expect, expectTypeOf, it } from "vite-plus/test";
 import { Domain, field, node, operation } from "../src/index.ts";
 
@@ -105,6 +105,33 @@ describe("execute array overload", () => {
     expect(b.posts).toEqual([{ title: "Post by a2" }]);
     expect(batchCalls).toBe(1);
     expect([...lastKeys].sort()).toEqual(["a1", "a2"]);
+  });
+
+  it("provided layers build once per batch, not once per entry", async () => {
+    let builds = 0;
+    class Now extends Context.Service<Now, { readonly stamp: number }>()("ExecArrayNow") {}
+    const NowLive = Layer.effect(
+      Now,
+      Effect.sync(() => {
+        builds++;
+        return { stamp: builds };
+      }),
+    );
+    const g = Domain.make({
+      stamp: operation({
+        type: Schema.Number,
+        resolve: () => Now.pipe(Effect.map((now) => now.stamp)),
+      }),
+    }).provide(NowLive);
+
+    const [a, b] = await Effect.runPromise(g.execute([{ name: "stamp" }, { name: "stamp" }]));
+
+    expect(builds).toBe(1);
+    expect(a).toBe(b); // both entries saw the same service instance
+
+    const results = await Effect.runPromise(g.dispatch([{ name: "stamp" }, { name: "stamp" }]));
+    expect(builds).toBe(2); // one more build for the whole dispatch batch
+    expect(results).toHaveLength(2);
   });
 
   it("single-op form is unaffected", async () => {

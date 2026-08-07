@@ -234,6 +234,13 @@ function makeDomainWithLayers<
   // violations: the typed API makes them unrepresentable, so reaching one at
   // runtime means a bypassed type check or a buggy resolver. Both die.
   function executeOperation(name: string, config: InternalConfig) {
+    return applyLayers(executeOperationRaw(name, config));
+  }
+
+  // Layer-free body: array callers apply layers once around the whole
+  // batch (so provided layers build once and entries share their
+  // services), single callers wrap per call via executeOperation.
+  function executeOperationRaw(name: string, config: InternalConfig) {
     if (!Object.hasOwn(ops, name)) {
       return Effect.die(new DomainInvariantError(`Unknown operation: ${name}`));
     }
@@ -242,30 +249,25 @@ function makeDomainWithLayers<
     if (config.reads === true) {
       // Suspend so each execution gets a fresh collector — the returned
       // Effect may be run more than once.
-      return applyLayers(
-        Effect.suspend(() => {
-          const reads = makeReadSetCollector();
-          const walked = toStream(op, config, reads);
-          return Effect.flatMap(Stream.runHead(walked), (option) => {
-            if (option._tag === "None") {
-              return Effect.die(
-                new DomainInvariantError("Operation resolver produced empty stream"),
-              );
-            }
-            return Effect.succeed({ result: option.value, reads: reads.entries });
-          });
-        }),
-      );
+      return Effect.suspend(() => {
+        const reads = makeReadSetCollector();
+        const walked = toStream(op, config, reads);
+        return Effect.flatMap(Stream.runHead(walked), (option) => {
+          if (option._tag === "None") {
+            return Effect.die(new DomainInvariantError("Operation resolver produced empty stream"));
+          }
+          return Effect.succeed({ result: option.value, reads: reads.entries });
+        });
+      });
     }
 
     const walked = toStream(op, config);
-    const result = Effect.flatMap(Stream.runHead(walked), (option) => {
+    return Effect.flatMap(Stream.runHead(walked), (option) => {
       if (option._tag === "None") {
         return Effect.die(new DomainInvariantError("Operation resolver produced empty stream"));
       }
       return Effect.succeed(option.value);
     });
-    return applyLayers(result);
   }
 
   function subscribeOperation(name: string, config: InternalConfig) {
@@ -335,6 +337,41 @@ function makeDomainWithLayers<
       .map(([name]) => name);
   }
 
+  // Layer-free bodies: array callers apply layers once around the whole
+  // batch; single callers wrap per call via dispatchOne/handleDispatchOne.
+  function dispatchOneRaw(config: DispatchRequest, options?: DispatchOptions) {
+    return liftBoundaryToResult(
+      (decoded) => executeBoundary(decoded, options),
+      decodeFor(config, "operation"),
+      config.name,
+    );
+  }
+
+  function dispatchOne(config: DispatchRequest, options?: DispatchOptions) {
+    return applyLayers(dispatchOneRaw(config, options));
+  }
+
+  function handleDispatchOneRaw(config: DispatchRequest, options?: WireDispatchOptions) {
+    // Decode-first: boundary failures encode via the gateway codec without
+    // ever touching the per-selection codec cache; only validated
+    // selections build (and memoize) success codecs. Operation E is lifted
+    // into the Result value by liftBoundaryToResult, so the encoded
+    // envelope carries every expected outcome.
+    return Effect.matchEffect(decodeFor(config, "operation"), {
+      onFailure: encodeGatewayFailure,
+      onSuccess: (decoded) =>
+        liftBoundaryToResult(
+          (d) => executeBoundary(d, options),
+          Effect.succeed(decoded),
+          config.name,
+        ).pipe(Effect.flatMap(encodeDispatchResult(config.name, decoded.select))),
+    });
+  }
+
+  function handleDispatchOne(config: DispatchRequest, options?: WireDispatchOptions) {
+    return applyLayers(handleDispatchOneRaw(config, options));
+  }
+
   return domainFacade<Ops, Provided, ProvidedE, ProvidedR>({
     operations: ops,
     operationNames() {
@@ -353,14 +390,18 @@ function makeDomainWithLayers<
       if (Array.isArray(nameOrEntries)) {
         if (nameOrEntries.length === 0) return Effect.succeed([]);
         const options = config as { readonly concurrency?: number | "unbounded" } | undefined;
-        return Effect.all(
-          // Entries carry only args/select by contract — strip anything else
-          // (an untyped caller's per-entry `reads`/`concurrency`) so the
-          // runtime matches the declared entry shape.
-          nameOrEntries.map((entry) =>
-            executeOperation(entry.name, { args: entry.args, select: entry.select }),
+        // Layers apply once around the whole batch, so provided layers
+        // build once and every entry shares their services.
+        return applyLayers(
+          Effect.all(
+            // Entries carry only args/select by contract — strip anything else
+            // (an untyped caller's per-entry `reads`/`concurrency`) so the
+            // runtime matches the declared entry shape.
+            nameOrEntries.map((entry) =>
+              executeOperationRaw(entry.name, { args: entry.args, select: entry.select }),
+            ),
+            { concurrency: options?.concurrency ?? "unbounded" },
           ),
-          { concurrency: options?.concurrency ?? "unbounded" },
         );
       }
       return executeOperation(nameOrEntries as string, (config as InternalConfig) ?? {});
@@ -462,14 +503,18 @@ function makeDomainWithLayers<
 
       return service;
     },
-    dispatch(config: DispatchRequest, options?: DispatchOptions) {
-      return applyLayers(
-        liftBoundaryToResult(
-          (decoded) => executeBoundary(decoded, options),
-          decodeFor(config, "operation"),
-          config.name,
-        ),
-      );
+    dispatch(config: DispatchRequest | ReadonlyArray<DispatchRequest>, options?: DispatchOptions) {
+      if (Array.isArray(config)) {
+        if (config.length === 0) return Effect.succeed([]);
+        // Layers apply once around the batch; entries share their services.
+        return applyLayers(
+          Effect.all(
+            config.map((entry: DispatchRequest) => dispatchOneRaw(entry, options)),
+            { concurrency: "unbounded" },
+          ),
+        );
+      }
+      return dispatchOne(config as DispatchRequest, options);
     },
     prepareDispatch(config: DispatchRequest, keyOptions?: InvocationKeyOptions) {
       return Effect.map(decodeFor(config, "operation"), (decoded) => ({
@@ -504,23 +549,21 @@ function makeDomainWithLayers<
         ),
       );
     },
-    handleDispatch(config: DispatchRequest, options?: WireDispatchOptions) {
-      // Decode-first: boundary failures encode via the gateway codec without
-      // ever touching the per-selection codec cache; only validated
-      // selections build (and memoize) success codecs. Operation E is lifted
-      // into the Result value by liftBoundaryToResult, so the encoded
-      // envelope carries every expected outcome.
-      return applyLayers(
-        Effect.matchEffect(decodeFor(config, "operation"), {
-          onFailure: encodeGatewayFailure,
-          onSuccess: (decoded) =>
-            liftBoundaryToResult(
-              (d) => executeBoundary(d, options),
-              Effect.succeed(decoded),
-              config.name,
-            ).pipe(Effect.flatMap(encodeDispatchResult(config.name, decoded.select))),
-        }),
-      );
+    handleDispatch(
+      config: DispatchRequest | ReadonlyArray<DispatchRequest>,
+      options?: WireDispatchOptions,
+    ) {
+      if (Array.isArray(config)) {
+        if (config.length === 0) return Effect.succeed([]);
+        // Layers apply once around the batch; entries share their services.
+        return applyLayers(
+          Effect.all(
+            config.map((entry: DispatchRequest) => handleDispatchOneRaw(entry, options)),
+            { concurrency: "unbounded" },
+          ),
+        );
+      }
+      return handleDispatchOne(config as DispatchRequest, options);
     },
     handleSubscription(config: DispatchRequest, options?: WireDispatchOptions) {
       return applyLayersStream(

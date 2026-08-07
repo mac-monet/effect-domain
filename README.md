@@ -181,6 +181,10 @@ typed failure fails the whole operation, so it arrives as that operation's
 The dispatch ladder, then, is: `handleDispatch` for simple wire transports,
 `prepareDispatch` when policy must run between validation and execution,
 `dispatch` when nothing crosses a wire and live `Result` values are wanted.
+`dispatch` and `handleDispatch` also accept an array of envelopes and return
+per-envelope outcomes in order — one entry's failure stays inside its own
+Result or encoded envelope while siblings succeed — so a batch wire endpoint
+is `Array.isArray(body)` away from a single-envelope one.
 See `examples/rpc-dispatch.ts` and `examples/http-dispatch.ts` for both ends
 of the wire in ~50 lines each.
 

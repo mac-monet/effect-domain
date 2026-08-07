@@ -315,6 +315,30 @@ export interface DomainInstance<
     config: Config & DomainTypes.ValidateBindConfig<Ops, Config, true>,
   ): DomainTypes.BoundSubscriptions<Ops, Config, Provided, ProvidedE, ProvidedR>;
   /**
+   * Array form: dispatch several envelopes as one call. Returns the
+   * per-envelope outcomes in entry order — each element is the same
+   * `Result` the single form produces, so one entry's failure sits in its
+   * own `Result` while siblings succeed (no fail-fast). Entries run
+   * concurrently (unbounded) in one fiber tree, sharing the request-batching
+   * window; `options` are the per-envelope {@link DispatchOptions} applied
+   * to every entry (`concurrency` is each entry's walker concurrency, not a
+   * batch limit).
+   *
+   * Must stay declared before the single-envelope overload: an array
+   * argument can never match the object form, so single-form inference and
+   * error messages are unaffected.
+   */
+  dispatch(
+    configs: ReadonlyArray<DispatchRequest>,
+    options?: DispatchOptions,
+  ): Effect.Effect<
+    ReadonlyArray<
+      Result.Result<unknown, GatewayError | OperationError<DomainTypes.AllE<Ops> | ProvidedE>>
+    >,
+    ProvidedE,
+    Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR
+  >;
+  /**
    * Convenience gateway entry for decoded or server-constructed dynamic
    * invocations. Decodes operation args + select and immediately executes the
    * operation. All expected outcomes (boundary errors AND operation E) surface
@@ -380,6 +404,28 @@ export interface DomainInstance<
     options?: DispatchOptions,
   ): Stream.Stream<
     Result.Result<unknown, GatewayError | OperationError<DomainTypes.AllE<Ops> | ProvidedE>>,
+    ProvidedE,
+    Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR
+  >;
+  /**
+   * Array form: handle several dispatch envelopes as one call. Returns the
+   * encoded dispatch-Result envelopes in entry order — each element is the
+   * same wire envelope the single form produces, so one entry's failure is
+   * encoded inside its own envelope while siblings succeed, and the error
+   * channel stays `ProvidedE`. Entries run concurrently (unbounded) in one
+   * fiber tree, sharing the request-batching window; `options` are the
+   * per-envelope {@link WireDispatchOptions} applied to every entry.
+   *
+   * Must stay declared before the single-envelope overload: an array
+   * argument can never match the object form, so single-form inference and
+   * error messages are unaffected.
+   */
+  handleDispatch(
+    this: DomainTypes.RequireErrorSchemas<Ops>,
+    configs: ReadonlyArray<DispatchRequest>,
+    options?: WireDispatchOptions,
+  ): Effect.Effect<
+    ReadonlyArray<unknown>,
     ProvidedE,
     Exclude<DomainTypes.AllR<Ops>, Provided> | ProvidedR
   >;
