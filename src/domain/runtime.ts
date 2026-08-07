@@ -346,8 +346,24 @@ function makeDomainWithLayers<
     analyzeSelection(selection: Selection | undefined) {
       return analyzeSelection(selection);
     },
-    execute(name: string, config: InternalConfig) {
-      return executeOperation(name, config);
+    execute(
+      nameOrEntries: string | ReadonlyArray<{ readonly name: string } & InternalConfig>,
+      config?: InternalConfig | { readonly concurrency?: number | "unbounded" },
+    ) {
+      if (Array.isArray(nameOrEntries)) {
+        if (nameOrEntries.length === 0) return Effect.succeed([]);
+        const options = config as { readonly concurrency?: number | "unbounded" } | undefined;
+        return Effect.all(
+          // Entries carry only args/select by contract — strip anything else
+          // (an untyped caller's per-entry `reads`/`concurrency`) so the
+          // runtime matches the declared entry shape.
+          nameOrEntries.map((entry) =>
+            executeOperation(entry.name, { args: entry.args, select: entry.select }),
+          ),
+          { concurrency: options?.concurrency ?? "unbounded" },
+        );
+      }
+      return executeOperation(nameOrEntries as string, (config as InternalConfig) ?? {});
     },
     subscribe(name: string, config: InternalConfig) {
       return subscribeOperation(name, config);

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added
+
+- **Array form of `execute`.** `domain.execute([{ name: "getUser", args, select },
+{ name: "getStats", select }])` — each entry the same shape as a dispatch
+  envelope — runs several operations as one call and returns
+  a tuple typed per entry — selection-dependent result types, error and
+  requirement channels the union of the listed operations'. Entries run
+  concurrently (`options.concurrency`, default unbounded) and share the
+  fiber's request-batching window, so batched fields coalesce across entries;
+  the batch fails fast on the first failing entry. `client.execute` mirrors
+  the overload: each entry dispatches through the transport concurrently and
+  decodes with its own `(name, select)` codec — no transport or wire-format
+  changes. Entries carry only `args`/`select`; subscriptions are excluded.
+
 ### Breaking
 
 - **Omitted `select` on node roots is now an error.** Previously an omitted

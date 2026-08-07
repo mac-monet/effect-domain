@@ -373,6 +373,50 @@ type SelectionConfig<T, S> = [RootSelectionFor<T>] extends [never]
  */
 export type DomainInvokeConfig<T, Args, S> = ArgsConfig<Args> & SelectionConfig<T, S>;
 
+/**
+ * One entry of the array form of `execute`: `{ name, args?, select }` — the
+ * same shape as a dispatch envelope. Entries carry only the invoke-shaped
+ * config (`args`/`select`) — `reads` and walker concurrency are execution
+ * policy, not per-entry data. The union distributes over concrete
+ * per-operation object types (discriminated on `name`), so `const` call
+ * sites keep exact per-entry selection inference (the mapped type appears
+ * only on the result side, after inference is done).
+ */
+export type ExecuteEntry<Ops extends Record<string, AnyOperationDef>> = {
+  [K in OperationNamesByStream<Ops, false>]: { readonly name: K } & DomainInvokeConfig<
+    ExtractType<Ops[K]>,
+    ExtractArgs<Ops[K]>,
+    RootSelectionFor<ExtractType<Ops[K]>>
+  >;
+}[OperationNamesByStream<Ops, false>];
+
+/** The selection-dependent result type of one {@link ExecuteEntry}. */
+export type ExecuteEntryResult<Ops, Entry> = Entry extends {
+  readonly name: infer K extends keyof Ops;
+}
+  ? DomainRootSelectedOf<
+      ExtractType<Ops[K]>,
+      Entry extends { readonly select: infer S } ? S : undefined
+    >
+  : never;
+
+/** The in-process error channel contributed by one {@link ExecuteEntry}. */
+export type ExecuteEntryE<Ops, Entry> = Entry extends { readonly name: infer K extends keyof Ops }
+  ? OperationE<Ops[K]>
+  : never;
+
+/** The requirements contributed by one {@link ExecuteEntry}. */
+export type ExecuteEntryR<Ops, Entry> = Entry extends { readonly name: infer K extends keyof Ops }
+  ? OperationR<Ops[K]>
+  : never;
+
+/** The wire-level error channel contributed by one {@link ExecuteEntry}. */
+export type ExecuteEntryWireE<Ops, Entry> = Entry extends {
+  readonly name: infer K extends keyof Ops;
+}
+  ? OperationWireE<Ops[K]>
+  : never;
+
 export type DomainExecuteConfig<T, Args, S> = ArgsConfig<Args> &
   SelectionConfig<T, S> & {
     readonly concurrency?: number | "unbounded";

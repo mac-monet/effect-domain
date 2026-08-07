@@ -57,6 +57,28 @@ export interface DomainInstance<
   subscriptionNames(): ReadonlyArray<DomainTypes.OperationNamesByStream<Ops, true>>;
   analyzeSelection(selection?: Selection): SelectionAnalysis;
   /**
+   * Array form: execute several operations as one call —
+   * `execute([{ name: "getUser", args, select }, { name: "getStats", select }])`
+   * — each entry the same shape as a dispatch envelope. Returns a tuple
+   * typed per entry, with the error and requirement
+   * channels the union of the listed operations'. Entries run concurrently
+   * (`options.concurrency`, default unbounded) and share the fiber's
+   * request-batching window, so batched fields coalesce across entries.
+   * Fail-fast: the first failing entry interrupts its siblings.
+   *
+   * Must stay declared before the name-based overloads: an array argument
+   * can never match the `name` slot, so single-op inference and error
+   * messages are unaffected.
+   */
+  execute<const T extends ReadonlyArray<DomainTypes.ExecuteEntry<Ops>>>(
+    entries: T,
+    options?: { readonly concurrency?: number | "unbounded" },
+  ): Effect.Effect<
+    { -readonly [I in keyof T]: DomainTypes.ExecuteEntryResult<Ops, T[I]> },
+    DomainTypes.ExecuteEntryE<Ops, T[number]> | ProvidedE,
+    Exclude<DomainTypes.ExecuteEntryR<Ops, T[number]>, Provided> | ProvidedR
+  >;
+  /**
    * With `reads: true`, additionally collects the walk's {@link ReadSet} —
    * the deduplicated `(node, key)` pairs of every identified entity the walk
    * touched — and returns an {@link DomainTypes.Execution} envelope. Only

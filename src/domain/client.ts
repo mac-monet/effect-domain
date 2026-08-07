@@ -57,6 +57,22 @@ type InvokeConfig<Op, S> = DomainTypes.DomainInvokeConfig<
  * @category models
  */
 export interface WireClient<Ops extends Record<string, AnyOperationDef>, TE = never, R = never> {
+  /**
+   * Array form, mirroring `domain.execute([...])`: each entry dispatches
+   * through the transport concurrently and decodes with its own
+   * `(name, select)` codec; the result is a tuple typed per entry.
+   * Fail-fast: the first failing entry interrupts its siblings. Always
+   * unbounded — dispatch concurrency across the wire is transport/server
+   * policy, so there is no `concurrency` option here.
+   * Must stay declared before the name-based overload.
+   */
+  execute<const T extends ReadonlyArray<DomainTypes.ExecuteEntry<Ops>>>(
+    entries: T,
+  ): Effect.Effect<
+    { -readonly [I in keyof T]: DomainTypes.ExecuteEntryResult<Ops, T[I]> },
+    DomainTypes.ExecuteEntryWireE<Ops, T[number]> | GatewayError | Schema.SchemaError | TE,
+    R
+  >;
   execute<
     K extends DomainTypes.OperationNamesByStream<Ops, false>,
     const S extends RootSelectionFor<DomainTypes.ExtractType<Ops[K]>>,
@@ -174,13 +190,26 @@ export function client<
         )
       : Effect.succeed(result.success);
 
+  const executeOne = (name: string, config: { args?: unknown; select?: unknown }) =>
+    transport
+      .execute({ name, args: config.args, select: config.select })
+      .pipe(Effect.flatMap(decode(name, config.select)), Effect.flatMap(unwrap));
+
   // The generic surface below is untyped by construction (runtime name
   // strings); the WireClient interface restores exact `domain.execute` typing.
   return {
-    execute: (name: string, config: { args?: unknown; select?: unknown }) =>
-      transport
-        .execute({ name, args: config.args, select: config.select })
-        .pipe(Effect.flatMap(decode(name, config.select)), Effect.flatMap(unwrap)),
+    execute: (
+      nameOrEntries:
+        | string
+        | ReadonlyArray<{ readonly name: string; args?: unknown; select?: unknown }>,
+      config?: { args?: unknown; select?: unknown },
+    ) =>
+      Array.isArray(nameOrEntries)
+        ? Effect.all(
+            nameOrEntries.map((entry) => executeOne(entry.name, entry)),
+            { concurrency: "unbounded" },
+          )
+        : executeOne(nameOrEntries as string, config ?? {}),
     subscribe: (name: string, config: { args?: unknown; select?: unknown }) =>
       transport
         .subscribe({ name, args: config.args, select: config.select })

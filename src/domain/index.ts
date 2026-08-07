@@ -240,6 +240,15 @@ export namespace Domain {
       name: string,
       config: { readonly args?: unknown; readonly select?: unknown },
     ): Effect.Effect<unknown, unknown>;
+    /** Erased array form — results in entry order, untyped. */
+    execute(
+      entries: ReadonlyArray<{
+        readonly name: string;
+        readonly args?: unknown;
+        readonly select?: unknown;
+      }>,
+      options?: { readonly concurrency?: number | "unbounded" },
+    ): Effect.Effect<ReadonlyArray<unknown>, unknown>;
     subscribe(
       name: string,
       config: { readonly args?: unknown; readonly select?: unknown },
