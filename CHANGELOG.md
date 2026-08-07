@@ -4,6 +4,27 @@
 
 ### Added
 
+- **Automatic batch coalescing across fields, with key dedup.** Batched
+  fields now share one request family when they share a resolve function:
+  `Post.author` and `Comment.author` both passing the same `batchUsers`
+  coalesce into a single batch call per walk, and each batch call receives
+  distinct keys (many parents wanting the same entity become one key).
+  Dataloader semantics as a runtime property — no loader objects. Inline
+  closures are distinct functions and batch separately, as before.
+
+### Fixed
+
+- **Concurrent executions could leak one run's services into another's
+  batch.** Effect coalesces requests globally by resolver instance, and
+  resolvers were created per field definition — so a node shared between
+  domains, or one domain executed concurrently with different
+  request-scoped layers, could merge concurrent runs into one batch that
+  executed with the first run's services (one tenant's repo answering
+  another tenant's keys). Batch resolvers are now selected per execution
+  context: fibers sharing the same built services (one walk, or array-form
+  entries under one layer application) coalesce as before; runs with
+  different contexts never share a batch.
+
 - **Array form of `execute`.** `domain.execute([{ name: "getUser", args, select },
 { name: "getStats", select }])` — each entry the same shape as a dispatch
   envelope — runs several operations as one call and returns

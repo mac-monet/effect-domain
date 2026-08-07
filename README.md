@@ -303,6 +303,17 @@ Effect coalesces them. For 100 users, this can become one `listUsers` operation
 plus one batched `findByAuthorIds([...100 ids])` call, not 100 individual post
 loads.
 
+Batching coalesces by the resolve function's identity within one execution
+context, and each batch call receives distinct keys. Two fields that share
+one resolve function — `Post.author` and `Comment.author` both loading
+users — share one request family, so a walk touching both still makes a
+single batched call with no duplicate keys. Sharing the function is the
+whole declaration: no loader objects to construct or thread through context.
+Inline closures are distinct functions and batch separately. Concurrent
+executions with different provided services never share a batch — coalescing
+is scoped to the built context, so one run's services can never answer
+another run's keys.
+
 The batching primitive is backend-agnostic. A resolver can batch through SQL,
 a KV store, a cache, another HTTP service, or an in-memory map. effect-domain
 only describes when a selected field should be resolved and how to derive its

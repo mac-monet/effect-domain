@@ -37,9 +37,9 @@ describe("Examples: Effect request batching for N+1", () => {
     );
 
     expect(stats.postBatchCalls).toBe(1);
-    // One batched call carrying every entry's keys ("u1" arrives once per
-    // requesting entry — batch keys are not deduplicated, read sets are).
-    expect([...new Set(stats.lastAuthorIds)].sort()).toEqual(["u1", "u2", "u3"]);
+    // One batched call carrying every entry's keys, deduplicated: "u1" is
+    // requested by both entries but the resolver sees it once.
+    expect([...stats.lastAuthorIds].sort()).toEqual(["u1", "u2", "u3"]);
     expect(users).toHaveLength(3);
     expect(user.posts[0]!.title).toBe("Post by Alice");
   });

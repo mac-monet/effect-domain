@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Schema } from "effect";
 import * as fc from "fast-check";
 import { describe, expect, it } from "vite-plus/test";
 import { Domain, field, node, operation } from "../src/index.ts";
@@ -291,7 +291,8 @@ describe("Unit 5: batched fields via key", () => {
             }),
           );
 
-          expect(receivedKeys).toEqual(ids);
+          // The resolver sees each key once, in first-appearance order.
+          expect(receivedKeys).toEqual([...new Set(ids)]);
 
           const anyMissing = ids.some((id) => missing.has(id));
           if (anyMissing) {
@@ -310,5 +311,79 @@ describe("Unit 5: batched fields via key", () => {
       ),
       { numRuns: 120 },
     );
+  });
+});
+
+describe("shared resolve functions coalesce; runs stay isolated", () => {
+  it("two fields sharing one resolve fn share one request family", async () => {
+    let calls = 0;
+    let received: ReadonlyArray<string> = [];
+    const sharedResolve = (keys: ReadonlyArray<string>) =>
+      Effect.sync(() => {
+        calls++;
+        received = keys;
+        return new Map(keys.map((k) => [k, `v-${k}`]));
+      });
+    const Left = node("ShareLeft", Schema.Struct({ aId: Schema.String }), (f) => ({
+      a: f.field({ type: Schema.String, key: (p) => p.aId, resolve: sharedResolve }),
+    }));
+    const Right = node("ShareRight", Schema.Struct({ bId: Schema.String }), (f) => ({
+      b: f.field({ type: Schema.String, key: (p) => p.bId, resolve: sharedResolve }),
+    }));
+    const Root = node("ShareRoot", Schema.Struct({ left: Left, right: Right }), {});
+    const g = Domain.make({
+      get: operation({
+        type: Root,
+        resolve: () => Effect.succeed({ left: { aId: "x" }, right: { bId: "y" } }),
+      }),
+    });
+
+    const result = await Effect.runPromise(
+      g.execute("get", {
+        select: { left: { select: { a: true } }, right: { select: { b: true } } },
+      }),
+    );
+    expect(result).toEqual({ left: { a: "v-x" }, right: { b: "v-y" } });
+    expect(calls).toBe(1);
+    expect([...received].sort()).toEqual(["x", "y"]);
+  });
+
+  it("concurrent runs with different provided services never share a batch", async () => {
+    class Tenant extends Context.Service<Tenant, { readonly name: string }>()(
+      "BatchIsolationTenant",
+    ) {}
+    const seen: Array<{ tenant: string; keys: ReadonlyArray<string> }> = [];
+    const sharedResolve = (keys: ReadonlyArray<string>) =>
+      Effect.gen(function* () {
+        const tenant = yield* Tenant;
+        // Yield so concurrent runs' batching windows would overlap if
+        // coalescing crossed run boundaries.
+        yield* Effect.sleep(10);
+        seen.push({ tenant: tenant.name, keys });
+        return new Map(keys.map((k) => [k, `${tenant.name}:${k}`]));
+      });
+    const Item = node("IsolationItem", Schema.Struct({ id: Schema.String }), (f) => ({
+      value: f.field({ type: Schema.String, key: (p) => p.id, resolve: sharedResolve }),
+    }));
+    const make = (name: string) =>
+      Domain.make({
+        get: operation({
+          type: Item,
+          args: Schema.Struct({ id: Schema.String }),
+          resolve: ({ args }) => Effect.succeed({ id: args.id }),
+        }),
+      }).provide(Layer.succeed(Tenant, { name }));
+
+    const [a, b] = await Promise.all([
+      Effect.runPromise(make("A").execute("get", { args: { id: "k1" }, select: { value: true } })),
+      Effect.runPromise(make("B").execute("get", { args: { id: "k1" }, select: { value: true } })),
+    ]);
+
+    expect(a.value).toBe("A:k1");
+    expect(b.value).toBe("B:k1");
+    // Two separate batch calls, one per run — no cross-run coalescing, no
+    // context leakage between tenants.
+    expect(seen).toHaveLength(2);
+    expect(seen.map((s) => s.tenant).sort()).toEqual(["A", "B"]);
   });
 });

@@ -1,5 +1,5 @@
 import { Effect, Schema, SchemaAST } from "effect";
-import { BatchFieldRequest } from "./define.ts";
+import { BatchFieldRequest, batchResolverFor } from "./define.ts";
 import type { NodeRegistry } from "./registry.ts";
 import { isNullable, isRecord, unwrapType } from "./schema/ast.ts";
 import { concreteUnionMember } from "./schema/sentinels.ts";
@@ -246,7 +246,11 @@ function resolveEntry<R>(
     let resolveEffect: Effect.Effect<unknown, unknown, R>;
     if (fieldDef._kind === "batched") {
       const request = BatchFieldRequest({ key: fieldDef.key(obj) });
-      resolveEffect = Effect.request(request, fieldDef.resolver);
+      // Resolver is selected per execution context so batches never merge
+      // across concurrent runs with different provided services.
+      resolveEffect = Effect.flatMap(Effect.context<never>(), (context) =>
+        Effect.request(request, batchResolverFor(context, fieldDef.resolve)),
+      ) as Effect.Effect<unknown, unknown, R>;
     } else {
       resolveEffect = fieldDef.args
         ? decodeAndResolve<R>(fieldDef.args, rawArgs, fieldDef.resolve, obj, field.childSelections)

@@ -47,7 +47,7 @@ interface BatchedFieldDef<
   readonly type: Schema.Schema<Type>;
   readonly key: (parent: Parent) => K;
   readonly error?: Schema.Top;
-  readonly resolver: RequestResolver.RequestResolver<BatchFieldRequest>;
+  readonly resolve: BatchResolveFn;
 }
 
 export interface BatchFieldRequest extends Request.Request<unknown, unknown> {
@@ -154,15 +154,51 @@ function makeComputedField(
   };
 }
 
-function makeBatchedField(
-  config: BatchedFieldConfig<unknown, unknown, unknown, unknown, string | number>,
-): BatchedFieldDef<unknown, unknown, unknown, unknown> {
-  // R is erased in StoredBatchedFieldDef — narrow to R=never for the resolver
-  const resolve = config.resolve as (
-    keys: ReadonlyArray<string | number>,
-  ) => Effect.Effect<ReadonlyMap<string | number, unknown>, unknown, never>;
-  const resolver = RequestResolver.make<BatchFieldRequest>((entries, _key) => {
-    const keys = entries.map((e) => e.request.key);
+/** Narrowed batch resolve signature stored on field defs (R erased). */
+export type BatchResolveFn = (
+  keys: ReadonlyArray<string | number>,
+) => Effect.Effect<ReadonlyMap<string | number, unknown>, unknown, never>;
+
+// RequestResolvers are cached per (execution context, resolve function):
+// Effect coalesces requests globally by resolver identity, so a resolver
+// shared across execution contexts would merge batches from concurrent runs
+// and execute them in the first entrant's context — one tenant's services
+// answering another tenant's keys. Keying by the built Context object means
+// coalescing happens exactly among fibers that share the same services (one
+// walk, or array-form entries under one layer application) and never across
+// runs with different contexts. Within a context, fields sharing one resolve
+// function (Post.author and Comment.author both loading Users) share one
+// request family — dataloader semantics as a runtime property. Inline
+// closures are distinct functions and batch separately by design.
+const resolversByContext = new WeakMap<
+  object,
+  WeakMap<BatchResolveFn, RequestResolver.RequestResolver<BatchFieldRequest>>
+>();
+
+/** @internal — walker entry point: the batch resolver for this run's context. */
+export function batchResolverFor(
+  context: object,
+  resolve: BatchResolveFn,
+): RequestResolver.RequestResolver<BatchFieldRequest> {
+  let byFn = resolversByContext.get(context);
+  if (byFn === undefined) {
+    byFn = new WeakMap();
+    resolversByContext.set(context, byFn);
+  }
+  const cached = byFn.get(resolve);
+  if (cached !== undefined) return cached;
+  const resolver = makeBatchResolver(resolve);
+  byFn.set(resolve, resolver);
+  return resolver;
+}
+
+function makeBatchResolver(
+  resolve: BatchResolveFn,
+): RequestResolver.RequestResolver<BatchFieldRequest> {
+  return RequestResolver.make<BatchFieldRequest>((entries, _key) => {
+    // Distinct keys only: many parents wanting the same entity become one
+    // key in the batch call; each entry still completes from its own lookup.
+    const keys = [...new Set(entries.map((e) => e.request.key))];
     return Effect.matchEffect(resolve(keys), {
       onSuccess: (resultMap) =>
         Effect.sync(() => {
@@ -188,12 +224,18 @@ function makeBatchedField(
         }),
     });
   });
+}
+
+function makeBatchedField(
+  config: BatchedFieldConfig<unknown, unknown, unknown, unknown, string | number>,
+): BatchedFieldDef<unknown, unknown, unknown, unknown> {
   return {
     _kind: "batched",
     type: config.type,
     key: config.key,
     ...(config.error !== undefined ? { error: config.error } : {}),
-    resolver,
+    // R is erased in StoredBatchedFieldDef — narrow for storage.
+    resolve: config.resolve as BatchResolveFn,
   };
 }
 
@@ -287,7 +329,7 @@ export interface StoredBatchedFieldDef {
   readonly type: { readonly ast: SchemaAST.AST };
   readonly key: (parent: unknown) => string | number;
   readonly error?: Schema.Top;
-  readonly resolver: RequestResolver.RequestResolver<BatchFieldRequest>;
+  readonly resolve: BatchResolveFn;
 }
 
 export function getFieldDefs<R = never>(

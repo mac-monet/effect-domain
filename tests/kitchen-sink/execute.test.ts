@@ -42,12 +42,13 @@ describe("kitchen sink: execute", () => {
     const p3 = user.posts.find((p) => p.title === "Machines")!;
     expect(p3.editor).toBeNull();
 
-    // posts batched once. post.author (p1, p3 → u1) and comment.author
-    // (c1 → u2, c2 → u3) share one repo resolver but are distinct field
-    // definitions, so they batch separately: exactly 2 user batch calls, not
-    // one per row (which would be 4).
+    // posts batched once. post.author (p1, p3 → u1, twice) and comment.author
+    // (c1 → u2, c2 → u3) share the batchUsers function, so they share one
+    // request family: one batch call with distinct keys, not per-field calls
+    // and not per-row (which would be 4).
     expect(stats.postBatchCalls).toBe(1);
-    expect(stats.userBatchCalls).toBe(2);
+    expect(stats.userBatchCalls).toBe(1);
+    expect([...stats.lastUserKeys].sort()).toEqual(["u1", "u2", "u3"]);
   });
 
   it("array form returns a tuple and coalesces batched fields across entries", async () => {
