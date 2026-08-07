@@ -27,9 +27,7 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getUser", {
-        select: { id: true, profile: { select: { bio: true } } },
-      }),
+      g.execute({ name: "getUser", select: { id: true, profile: { select: { bio: true } } } }),
     );
 
     expect(result.id).toBe("1");
@@ -57,9 +55,7 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getUser", {
-        select: { posts: { select: { id: true, upper: true } } },
-      }),
+      g.execute({ name: "getUser", select: { posts: { select: { id: true, upper: true } } } }),
     );
 
     expect(result.posts).toEqual([
@@ -80,7 +76,7 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("get", { select: { items: { select: { name: true } } } }),
+      g.execute({ name: "get", select: { items: { select: { name: true } } } }),
     );
 
     expect(result.items).toEqual([{ name: "a" }, { name: "b" }]);
@@ -104,9 +100,7 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getUser", {
-        select: { profile: { select: { bio: true } } },
-      }),
+      g.execute({ name: "getUser", select: { profile: { select: { bio: true } } } }),
     );
 
     expect(result.profile).toBeNull();
@@ -127,7 +121,7 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("get", { select: { name: { select: { first: true } } } }),
+      g.execute({ name: "get", select: { name: { select: { first: true } } } }),
     );
 
     expect(result.name).toBeNull();
@@ -171,7 +165,7 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
         });
 
         const fiber = yield* g
-          .execute("get", { select: { a: true, b: true } })
+          .execute({ name: "get", select: { a: true, b: true } })
           .pipe(Effect.forkChild({ startImmediately: true }));
         yield* Deferred.await(started[0]!);
         yield* Deferred.await(started[1]!);
@@ -232,7 +226,7 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
         });
 
         const fiber = yield* g
-          .execute("get", { select: { a: true, b: true, c: true }, concurrency: 1 })
+          .execute({ name: "get", select: { a: true, b: true, c: true } }, { concurrency: 1 })
           .pipe(Effect.forkChild({ startImmediately: true }));
 
         for (let i = 0; i < releases.length; i++) {
@@ -262,7 +256,8 @@ describe("Unit 2: walker — lists, nested objects, null handling", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("get", {
+      g.execute({
+        name: "get",
         select: {
           profile: { select: { address: { select: { city: true } } } },
         },

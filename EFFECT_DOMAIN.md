@@ -71,25 +71,30 @@ const domain = Domain.make(ops)
 The engine traverses this graph given an operation name, optional args, and a selection when the operation root is projectable:
 
 ```ts
-// Single-value operations
-domain.execute("getUser", {
-  args: { id: "123" },
-  select: { id: true, fullName: true, posts: { select: { title: true } } },
-  concurrency: "unbounded",
-});
+// Single-value operations — walker concurrency is execution policy, in options
+domain.execute(
+  {
+    name: "getUser",
+    args: { id: "123" },
+    select: { id: true, fullName: true, posts: { select: { title: true } } },
+  },
+  { concurrency: "unbounded" },
+);
 
 // Stream operations
-domain.subscribe("onUserCreated", {
+domain.subscribe({
+  name: "onUserCreated",
   select: { id: true, fullName: true },
 });
 
 // Array roots apply the root selection to each element
-domain.execute("listUsers", {
+domain.execute({
+  name: "listUsers",
   select: { id: true, fullName: true },
 });
 
 // Opaque scalar roots take no selection
-domain.execute("countUsers", {});
+domain.execute({ name: "countUsers" });
 ```
 
 Unselected computed fields are not executed. Plain data fields are property access. Fields defined with `key` are automatically batched via `Effect.request` — the walker's concurrent execution and Effect's tick-based batching coalesce same-resolver requests at each depth level.

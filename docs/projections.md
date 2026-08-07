@@ -31,7 +31,7 @@ system does the work GraphQL outsources to build tooling.
 
 A domain value can be projected onto surfaces without restating anything:
 
-- **In-process API** — `domain.execute(name, { args, select })` runs an
+- **In-process API** — `domain.execute({ name, args, select })` runs an
   operation directly and returns exactly the selected tree, fully typed. The
   array form — `execute([{ name, args, select }, ...])` — runs several
   operations as one call, tuple-typed per entry, with batched fields

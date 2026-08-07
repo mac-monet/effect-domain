@@ -142,7 +142,8 @@ describe("client over handleDispatch (in-process wire)", () => {
   const client = Domain.client(liveDomain);
 
   it("types nested projections as plain data trees (regression: Omit broke const-S inference)", () => {
-    const eff = client.execute("getUser", {
+    const eff = client.execute({
+      name: "getUser",
       args: { id: "1" },
       select: { id: true, profile: { select: { location: true } } },
     });
@@ -153,7 +154,7 @@ describe("client over handleDispatch (in-process wire)", () => {
 
   it("round-trips a typed success", async () => {
     const user = await Effect.runPromise(
-      client.execute("getUser", { args: { id: "1" }, select: { id: true, fullName: true } }),
+      client.execute({ name: "getUser", args: { id: "1" }, select: { id: true, fullName: true } }),
     );
     expect(user.id).toBe("1");
     expect(user.fullName).toBe("Alice Anderson");
@@ -161,7 +162,7 @@ describe("client over handleDispatch (in-process wire)", () => {
 
   it("unwraps a declared error into the typed error channel", async () => {
     const exit = await Effect.runPromiseExit(
-      client.execute("getUser", { args: { id: "missing" }, select: { id: true } }),
+      client.execute({ name: "getUser", args: { id: "missing" }, select: { id: true } }),
     );
     const error = Exit.findErrorOption(exit).pipe(Option.getOrThrow);
     expect(error).toBeInstanceOf(UserNotFound);
@@ -170,7 +171,7 @@ describe("client over handleDispatch (in-process wire)", () => {
   it("streams subscription items as decoded results", async () => {
     const items = await Effect.runPromise(
       Stream.runCollect(
-        client.subscribe("watchUsers", { args: { start: 5 }, select: { id: true } }),
+        client.subscribe({ name: "watchUsers", args: { start: 5 }, select: { id: true } }),
       ),
     );
     expect(items.map((row) => row.id)).toEqual(["5", "6"]);

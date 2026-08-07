@@ -53,7 +53,7 @@ describe("Unit 4: strict field failures and field args", () => {
     });
 
     const error = await Effect.runPromise(
-      Effect.flip(g.execute("get", { select: { id: true, ok: true, boom: true } })),
+      Effect.flip(g.execute({ name: "get", select: { id: true, ok: true, boom: true } })),
     );
 
     expect(error).toBe("resolver error");
@@ -71,7 +71,7 @@ describe("Unit 4: strict field failures and field args", () => {
     });
 
     const error = await Effect.runPromise(
-      Effect.flip(g.execute("get", { select: { id: true, a: true, b: true, c: true } })),
+      Effect.flip(g.execute({ name: "get", select: { id: true, a: true, b: true, c: true } })),
     );
 
     expect(["error-a", "error-b"]).toContain(error);
@@ -94,9 +94,7 @@ describe("Unit 4: strict field failures and field args", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("get", {
-        select: { greeting: { args: { name: "Alice" } } },
-      }),
+      g.execute({ name: "get", select: { greeting: { args: { name: "Alice" } } } }),
     );
 
     expect(result.greeting).toBe("Hello, Alice (42)!");
@@ -119,9 +117,7 @@ describe("Unit 4: strict field failures and field args", () => {
     });
 
     const exit = await Effect.runPromiseExit(
-      g.execute("get", {
-        select: { greeting: { args: { name: 123 } } },
-      }),
+      g.execute({ name: "get", select: { greeting: { args: { name: 123 } } } }),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -175,9 +171,7 @@ describe("Unit 4: strict field failures and field args", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("get", {
-        select: { greeting: { alias: "hi" } } as Selection,
-      }),
+      g.execute({ name: "get", select: { greeting: { alias: "hi" } } as Selection }),
     );
 
     expect((result as any).hi).toBe("hello");
@@ -200,9 +194,7 @@ describe("Unit 4: strict field failures and field args", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("get", {
-        select: { greeting: { alias: "__proto__" } } as Selection,
-      }),
+      g.execute({ name: "get", select: { greeting: { alias: "__proto__" } } as Selection }),
     );
 
     expect(Object.hasOwn(result, "__proto__")).toBe(true);
@@ -226,7 +218,8 @@ describe("Unit 4: strict field failures and field args", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("get", {
+      g.execute({
+        name: "get",
         select: {
           users: [
             { args: { role: "user" }, select: { name: true } },
@@ -255,11 +248,7 @@ describe("Unit 4: strict field failures and field args", () => {
       }),
     });
 
-    await expectDies(
-      g.execute("get", {
-        select: { value: { args: { unexpected: true } } },
-      }),
-    );
+    await expectDies(g.execute({ name: "get", select: { value: { args: { unexpected: true } } } }));
   });
 
   it("data fields die on selection args (caller misuse)", async () => {
@@ -272,11 +261,7 @@ describe("Unit 4: strict field failures and field args", () => {
       }),
     });
 
-    await expectDies(
-      g.execute("get", {
-        select: { id: { args: { unexpected: true } } },
-      }),
-    );
+    await expectDies(g.execute({ name: "get", select: { id: { args: { unexpected: true } } } }));
   });
 });
 
@@ -297,7 +282,8 @@ describe("Recursive (Suspend) schemas", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getThread", {
+      g.execute({
+        name: "getThread",
         select: {
           body: true,
           shout: true,

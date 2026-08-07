@@ -86,7 +86,8 @@ describe("Domain.erase", () => {
     expect(erased.inspect().operations.map((op) => op.name)).toEqual(["hello"]);
     expect(SchemaAST.isObjects(SchemaAST.toType(erased.argsSchema("hello").ast))).toBe(true);
     const result = (await Effect.runPromise(
-      erased.execute("hello", {
+      erased.execute({
+        name: "hello",
         args: { who: "world" },
         select: { echo: true },
       }) as Effect.Effect<unknown>,
@@ -110,7 +111,7 @@ describe("Domain.erase", () => {
     Domain.erase(g);
     const erased = Domain.erase(g.provide(Layer.succeed(Greeter)({ greeting: "yo" })));
     const result = (await Effect.runPromise(
-      erased.execute("greet", { select: { echo: true } }) as Effect.Effect<unknown>,
+      erased.execute({ name: "greet", select: { echo: true } }) as Effect.Effect<unknown>,
     )) as { echo: string };
     expect(result.echo).toBe("yo");
   });

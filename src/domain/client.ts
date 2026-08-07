@@ -1,7 +1,7 @@
 import { Effect, Result, Schema, Stream } from "effect";
 import type { AnyOperationDef } from "../define.ts";
 import { type DispatchRequest, GatewayError, OperationError } from "../gateway.ts";
-import type { RootSelectionFor, Selection } from "../selection/syntax.ts";
+import type { Selection } from "../selection/syntax.ts";
 import type { DomainInstance } from "./interface.ts";
 import type * as DomainTypes from "./type-level.ts";
 
@@ -35,19 +35,6 @@ export interface WireTransport<TE> {
 }
 
 /**
- * Everything a wire call can fail with: the operation's declared errors —
- * including declared field errors, since a field's typed failure fails the
- * whole operation — unwrapped from `OperationError`, a boundary
- * `GatewayError`, a decode failure, or the transport's own failure type.
- */
-type ClientErrors<Op, TE> = DomainTypes.OperationWireE<Op> | GatewayError | Schema.SchemaError | TE;
-
-type InvokeConfig<Op, S> = DomainTypes.DomainInvokeConfig<
-  DomainTypes.ExtractType<Op>,
-  DomainTypes.ExtractArgs<Op>,
-  S
->;
-
 /**
  * A remote client with `domain.execute` / `domain.subscribe` parity:
  * operation names, args, selections, and selection-dependent result types
@@ -73,26 +60,25 @@ export interface WireClient<Ops extends Record<string, AnyOperationDef>, TE = ne
     DomainTypes.ExecuteEntryWireE<Ops, T[number]> | GatewayError | Schema.SchemaError | TE,
     R
   >;
-  execute<
-    K extends DomainTypes.OperationNamesByStream<Ops, false>,
-    const S extends RootSelectionFor<DomainTypes.ExtractType<Ops[K]>>,
-  >(
-    name: K,
-    config: InvokeConfig<Ops[K], S>,
+  /**
+   * Canonical single form, mirroring `domain.execute({ name, args, select })`:
+   * one dispatch-shaped envelope through the transport.
+   */
+  execute<const T extends DomainTypes.ExecuteEntry<Ops>>(
+    entry: T,
   ): Effect.Effect<
-    DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
-    ClientErrors<Ops[K], TE>,
+    DomainTypes.ExecuteEntryResult<Ops, T>,
+    DomainTypes.ExecuteEntryWireE<Ops, T> | GatewayError | Schema.SchemaError | TE,
     R
   >;
-  subscribe<
-    K extends DomainTypes.OperationNamesByStream<Ops, true>,
-    const S extends RootSelectionFor<DomainTypes.ExtractType<Ops[K]>>,
-  >(
-    name: K,
-    config: InvokeConfig<Ops[K], S>,
+  /**
+   * Canonical subscription form: one dispatch-shaped envelope.
+   */
+  subscribe<const T extends DomainTypes.SubscribeEntry<Ops>>(
+    entry: T,
   ): Stream.Stream<
-    DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
-    ClientErrors<Ops[K], TE>,
+    DomainTypes.ExecuteEntryResult<Ops, T>,
+    DomainTypes.ExecuteEntryWireE<Ops, T> | GatewayError | Schema.SchemaError | TE,
     R
   >;
 }
@@ -199,24 +185,28 @@ export function client<
   // strings); the WireClient interface restores exact `domain.execute` typing.
   return {
     execute: (
-      nameOrEntries:
-        | string
+      entryOrEntries:
+        | { readonly name: string; args?: unknown; select?: unknown }
         | ReadonlyArray<{ readonly name: string; args?: unknown; select?: unknown }>,
-      config?: { args?: unknown; select?: unknown },
     ) =>
-      Array.isArray(nameOrEntries)
+      Array.isArray(entryOrEntries)
         ? Effect.all(
-            nameOrEntries.map((entry) => executeOne(entry.name, entry)),
+            entryOrEntries.map((entry) => executeOne(entry.name, entry)),
             { concurrency: "unbounded" },
           )
-        : executeOne(nameOrEntries as string, config ?? {}),
-    subscribe: (name: string, config: { args?: unknown; select?: unknown }) =>
-      transport
-        .subscribe({ name, args: config.args, select: config.select })
-        .pipe(
-          Stream.mapEffect((item) =>
-            decode(name, config.select)(item).pipe(Effect.flatMap(unwrap)),
+        : // Array.isArray doesn't narrow ReadonlyArray out of the union.
+          executeOne(
+            (entryOrEntries as { readonly name: string }).name,
+            entryOrEntries as { args?: unknown; select?: unknown },
           ),
-        ),
+    subscribe: (entry: { readonly name: string; args?: unknown; select?: unknown }) => {
+      const name = entry.name;
+      const cfg = entry;
+      return transport
+        .subscribe({ name, args: cfg.args, select: cfg.select })
+        .pipe(
+          Stream.mapEffect((item) => decode(name, cfg.select)(item).pipe(Effect.flatMap(unwrap))),
+        );
+    },
   } as unknown as WireClient<Ops, TE>;
 }

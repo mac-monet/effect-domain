@@ -374,6 +374,16 @@ type SelectionConfig<T, S> = [RootSelectionFor<T>] extends [never]
 export type DomainInvokeConfig<T, Args, S> = ArgsConfig<Args> & SelectionConfig<T, S>;
 
 /**
+ * Envelopes carry only client data. Execution policy (`reads`, walker
+ * `concurrency`) lives in the options argument — these `never` slots turn a
+ * misplaced policy key into a compile error instead of a silent no-op.
+ */
+type EnvelopeOnly = {
+  readonly reads?: never;
+  readonly concurrency?: never;
+};
+
+/**
  * One entry of the array form of `execute`: `{ name, args?, select }` — the
  * same shape as a dispatch envelope. Entries carry only the invoke-shaped
  * config (`args`/`select`) — `reads` and walker concurrency are execution
@@ -387,8 +397,22 @@ export type ExecuteEntry<Ops extends Record<string, AnyOperationDef>> = {
     ExtractType<Ops[K]>,
     ExtractArgs<Ops[K]>,
     RootSelectionFor<ExtractType<Ops[K]>>
-  >;
+  > &
+    EnvelopeOnly;
 }[OperationNamesByStream<Ops, false>];
+
+/**
+ * Subscription sibling of {@link ExecuteEntry}: `{ name, args?, select }` for
+ * a subscription (streamed) operation name.
+ */
+export type SubscribeEntry<Ops extends Record<string, AnyOperationDef>> = {
+  [K in OperationNamesByStream<Ops, true>]: { readonly name: K } & DomainInvokeConfig<
+    ExtractType<Ops[K]>,
+    ExtractArgs<Ops[K]>,
+    RootSelectionFor<ExtractType<Ops[K]>>
+  > &
+    EnvelopeOnly;
+}[OperationNamesByStream<Ops, true>];
 
 /** The selection-dependent result type of one {@link ExecuteEntry}. */
 export type ExecuteEntryResult<Ops, Entry> = Entry extends {

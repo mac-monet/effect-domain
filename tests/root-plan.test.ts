@@ -181,7 +181,8 @@ describe("root plan interpreter agreement", () => {
 
   it("walker projects nullable array roots and maps null to plain null", async () => {
     const projected = await Effect.runPromise(
-      nullableList.execute("maybeUsers", {
+      nullableList.execute({
+        name: "maybeUsers",
         args: { empty: false },
         select: { id: true, fullName: true },
       }),
@@ -190,7 +191,7 @@ describe("root plan interpreter agreement", () => {
     expect(rows[0]!.fullName).toBe("Alice Smith");
 
     const absent = await Effect.runPromise(
-      nullableList.execute("maybeUsers", { args: { empty: true }, select: { id: true } }),
+      nullableList.execute({ name: "maybeUsers", args: { empty: true }, select: { id: true } }),
     );
     expect(absent).toBeNull();
   });
@@ -223,12 +224,12 @@ describe("root plan interpreter agreement", () => {
   });
 
   it("walker still enforces the array-shape defect for opaque array roots", async () => {
-    expect(await Effect.runPromise(opaqueList.execute("listIds", {}))).toEqual(["1", "2"]);
-    await expectDies(opaqueList.execute("brokenListIds", {}));
+    expect(await Effect.runPromise(opaqueList.execute({ name: "listIds" }))).toEqual(["1", "2"]);
+    await expectDies(opaqueList.execute({ name: "brokenListIds" }));
   });
 
   it("all three interpreters reject selections on opaque array roots", async () => {
-    await expectDies(opaqueList.execute("listIds", { select: { id: true } } as never));
+    await expectDies(opaqueList.execute({ name: "listIds", select: { id: true } } as never));
     expect(() => decode(opaqueList.selectionSchema("listIds"), { id: true })).toThrow(
       /opaque root does not accept a selection/,
     );
@@ -240,7 +241,7 @@ describe("root plan interpreter agreement", () => {
   it("all three interpreters reject omitted selection on node roots", async () => {
     // Nullable root with a null result: the selection check must fire before
     // the null early-return.
-    await expectDies(nullableList.execute("maybeUsers", { args: { empty: true } } as never));
+    await expectDies(nullableList.execute({ name: "maybeUsers", args: { empty: true } } as never));
     expect(() => decode(nullableList.selectionSchema("maybeUsers"), undefined)).toThrow();
     expect(() => nullableList.responseSchema("maybeUsers", undefined as never)).toThrow(
       /selection is required for node roots/,
@@ -255,8 +256,8 @@ describe("root plan interpreter agreement", () => {
   });
 
   it("all three interpreters treat mixed object/scalar union roots as opaque", async () => {
-    expect(await Effect.runPromise(mixedUnion.execute("userOrCount", {}))).toBe(7);
-    await expectDies(mixedUnion.execute("userOrCount", { select: { id: true } } as never));
+    expect(await Effect.runPromise(mixedUnion.execute({ name: "userOrCount" }))).toBe(7);
+    await expectDies(mixedUnion.execute({ name: "userOrCount", select: { id: true } } as never));
     expect(() => decode(mixedUnion.selectionSchema("userOrCount"), { id: true })).toThrow(
       /mixed object\/scalar union root/,
     );
@@ -275,10 +276,12 @@ describe("root plan interpreter agreement", () => {
 
   it("walker maps null to plain null on nullable opaque roots and passes values through", async () => {
     expect(
-      await Effect.runPromise(nullableScalar.execute("maybeCount", { args: { empty: false } })),
+      await Effect.runPromise(
+        nullableScalar.execute({ name: "maybeCount", args: { empty: false } }),
+      ),
     ).toBe(3);
     const absent = await Effect.runPromise(
-      nullableScalar.execute("maybeCount", { args: { empty: true } }),
+      nullableScalar.execute({ name: "maybeCount", args: { empty: true } }),
     );
     expect(absent).toBeNull();
   });
@@ -296,8 +299,8 @@ describe("root plan interpreter agreement", () => {
         resolve: () => Effect.succeed(["a", 1] as const),
       }),
     });
-    expect(await Effect.runPromise(tuples.execute("pair", {} as never))).toEqual(["a", 1]);
-    await expectDies(tuples.execute("pair", { select: { id: true } } as never));
+    expect(await Effect.runPromise(tuples.execute({ name: "pair" } as never))).toEqual(["a", 1]);
+    await expectDies(tuples.execute({ name: "pair", select: { id: true } } as never));
     expect(() => decode(tuples.selectionSchema("pair"), { id: true })).toThrow();
     expect(() => tuples.responseSchema("pair", { id: true } as never)).toThrow(
       /opaque root does not accept a selection/,
@@ -315,12 +318,12 @@ describe("root plan interpreter agreement", () => {
     });
 
     const projected = (await Effect.runPromise(
-      maybePet.execute("maybePet", { args: { empty: false }, select: { name: true } }),
+      maybePet.execute({ name: "maybePet", args: { empty: false }, select: { name: true } }),
     )) as unknown as Record<string, string>;
     expect(projected.name).toBe("Mia");
 
     const absent = await Effect.runPromise(
-      maybePet.execute("maybePet", { args: { empty: true }, select: { name: true } }),
+      maybePet.execute({ name: "maybePet", args: { empty: true }, select: { name: true } }),
     );
     expect(absent).toBeNull();
 
@@ -340,7 +343,7 @@ describe("root plan interpreter agreement", () => {
       }),
     });
     const rows = (await Effect.runPromise(
-      pets.execute("listPets", { select: { name: true } } as never),
+      pets.execute({ name: "listPets", select: { name: true } } as never),
     )) as unknown as ReadonlyArray<Record<string, string>>;
     expect(rows[0]!.name).toBe("Mia");
 

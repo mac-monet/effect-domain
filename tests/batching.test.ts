@@ -48,7 +48,8 @@ describe("Unit 5: batched fields via key", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getAuthors", {
+      g.execute({
+        name: "getAuthors",
         select: {
           authors: {
             select: { id: true, posts: { select: { title: true } } },
@@ -98,9 +99,7 @@ describe("Unit 5: batched fields via key", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getItems", {
-        select: { items: { select: { id: true, detail: true } } },
-      }),
+      g.execute({ name: "getItems", select: { items: { select: { id: true, detail: true } } } }),
     );
 
     expect(result.items).toEqual([
@@ -155,7 +154,8 @@ describe("Unit 5: batched fields via key", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getItems", {
+      g.execute({
+        name: "getItems",
         select: { items: { select: { id: true, upper: true, related: true } } },
       }),
     );
@@ -199,9 +199,7 @@ describe("Unit 5: batched fields via key", () => {
     });
 
     const exit = await Effect.runPromiseExit(
-      g.execute("getItems", {
-        select: { items: { select: { id: true, value: true } } },
-      }),
+      g.execute({ name: "getItems", select: { items: { select: { id: true, value: true } } } }),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -236,9 +234,7 @@ describe("Unit 5: batched fields via key", () => {
 
     const error = await Effect.runPromise(
       Effect.flip(
-        g.execute("getItems", {
-          select: { items: { select: { id: true, value: true } } },
-        }),
+        g.execute({ name: "getItems", select: { items: { select: { id: true, value: true } } } }),
       ),
     );
 
@@ -286,7 +282,8 @@ describe("Unit 5: batched fields via key", () => {
           });
 
           const exit = await Effect.runPromiseExit(
-            g.execute("getItems", {
+            g.execute({
+              name: "getItems",
               select: { items: { select: { id: true, value: true } } },
             }),
           );
@@ -339,7 +336,8 @@ describe("shared resolve functions coalesce; runs stay isolated", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("get", {
+      g.execute({
+        name: "get",
         select: { left: { select: { a: true } }, right: { select: { b: true } } },
       }),
     );
@@ -375,8 +373,12 @@ describe("shared resolve functions coalesce; runs stay isolated", () => {
       }).provide(Layer.succeed(Tenant, { name }));
 
     const [a, b] = await Promise.all([
-      Effect.runPromise(make("A").execute("get", { args: { id: "k1" }, select: { value: true } })),
-      Effect.runPromise(make("B").execute("get", { args: { id: "k1" }, select: { value: true } })),
+      Effect.runPromise(
+        make("A").execute({ name: "get", args: { id: "k1" }, select: { value: true } }),
+      ),
+      Effect.runPromise(
+        make("B").execute({ name: "get", args: { id: "k1" }, select: { value: true } }),
+      ),
     ]);
 
     expect(a.value).toBe("A:k1");

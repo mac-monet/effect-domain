@@ -11,7 +11,8 @@ describe("kitchen sink: in-process client", () => {
 
   it("round-trips a deep selection through the wire codec", async () => {
     const user = await Effect.runPromise(
-      client.execute("getUser", {
+      client.execute({
+        name: "getUser",
         args: { id: "u1" },
         select: {
           fullName: true,
@@ -36,7 +37,9 @@ describe("kitchen sink: in-process client", () => {
 
   it("decodes a declared operation error to a class instance", async () => {
     const error = await Effect.runPromise(
-      Effect.flip(client.execute("getUser", { args: { id: "missing" }, select: { id: true } })),
+      Effect.flip(
+        client.execute({ name: "getUser", args: { id: "missing" }, select: { id: true } }),
+      ),
     );
     expect(error).toBeInstanceOf(KSUserNotFound);
     expect((error as KSUserNotFound).id).toBe("missing");
@@ -45,7 +48,7 @@ describe("kitchen sink: in-process client", () => {
   it("surfaces a mid-depth field error as the operation's error", async () => {
     // bio fails for u3 only — reached via listUsers, two levels into the walk.
     const error = await Effect.runPromise(
-      Effect.flip(client.execute("listUsers", { select: { id: true, bio: true } })),
+      Effect.flip(client.execute({ name: "listUsers", select: { id: true, bio: true } })),
     );
     expect(error).toBeInstanceOf(KSBioUnavailable);
     expect((error as KSBioUnavailable).userId).toBe("u3");
@@ -69,7 +72,8 @@ describe("kitchen sink: in-process client", () => {
   it("streams a subscription with a projected selection through the wire codec", async () => {
     const items = await Effect.runPromise(
       Stream.runCollect(
-        client.subscribe("watchPosts", {
+        client.subscribe({
+          name: "watchPosts",
           args: { authorId: "u2" },
           select: { title: true, author: { select: { fullName: true } } },
         }),
@@ -117,7 +121,8 @@ describe("kitchen sink: HTTP client against a real server", () => {
   it("round-trips a deep selection over real HTTP", async () => {
     const client = await httpClient();
     const user = await Effect.runPromise(
-      client.execute("getUser", {
+      client.execute({
+        name: "getUser",
         args: { id: "u1" },
         select: { fullName: true, posts: { select: { author: { select: { fullName: true } } } } },
       }),
@@ -132,7 +137,9 @@ describe("kitchen sink: HTTP client against a real server", () => {
   it("decodes declared errors carried over real HTTP", async () => {
     const client = await httpClient();
     const error = await Effect.runPromise(
-      Effect.flip(client.execute("getUser", { args: { id: "missing" }, select: { id: true } })),
+      Effect.flip(
+        client.execute({ name: "getUser", args: { id: "missing" }, select: { id: true } }),
+      ),
     );
     expect(error).toBeInstanceOf(KSUserNotFound);
   });

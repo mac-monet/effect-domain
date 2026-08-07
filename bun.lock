@@ -14,7 +14,7 @@
         "vite-plus": "0.1.19",
       },
       "peerDependencies": {
-        "effect": "^4.0.0-beta.103",
+        "effect": "^4.0.0-beta.101",
       },
     },
   },

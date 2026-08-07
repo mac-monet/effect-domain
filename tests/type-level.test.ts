@@ -60,7 +60,8 @@ describe("Unit 7: typed selections and NodeType", () => {
   });
 
   it("execute() return type reflects selection", () => {
-    const result = domain.execute("getUser", {
+    const result = domain.execute({
+      name: "getUser",
       args: { id: "1" },
       select: { id: true, fullName: true },
     });
@@ -69,10 +70,7 @@ describe("Unit 7: typed selections and NodeType", () => {
   });
 
   it("execute() excludes unselected fields from result type", () => {
-    const result = domain.execute("getUser", {
-      args: { id: "1" },
-      select: { id: true },
-    });
+    const result = domain.execute({ name: "getUser", args: { id: "1" }, select: { id: true } });
     type R = typeof result extends Effect.Effect<infer A, any, any> ? A : never;
     expectTypeOf<R>().toEqualTypeOf<{ id: string }>();
   });
@@ -80,9 +78,9 @@ describe("Unit 7: typed selections and NodeType", () => {
   it("execute() requires args for operations with args schemas", () => {
     if (typecheckOnly) {
       // @ts-expect-error getUser requires args.
-      domain.execute("getUser", { select: { id: true } });
+      domain.execute({ name: "getUser", select: { id: true } });
     }
-    domain.execute("getUser", { args: { id: "1" }, select: { id: true } });
+    domain.execute({ name: "getUser", args: { id: "1" }, select: { id: true } });
   });
 
   it("subscribe() return type reflects selection", () => {
@@ -93,7 +91,8 @@ describe("Unit 7: typed selections and NodeType", () => {
         resolve: () => Stream.make({ id: "1", firstName: "Ada", lastName: "Lovelace" }),
       }),
     });
-    const result = g.subscribe("watchUsers", {
+    const result = g.subscribe({
+      name: "watchUsers",
       args: { id: "1" },
       select: { id: true, fullName: true },
     });
@@ -124,9 +123,9 @@ describe("Unit 7: typed selections and NodeType", () => {
 
     if (typecheckOnly) {
       // @ts-expect-error execute only accepts one-shot operations.
-      g.execute("watchUsers", { args: { start: 0 }, select: { id: true } });
+      g.execute({ name: "watchUsers", args: { start: 0 }, select: { id: true } });
       // @ts-expect-error subscribe only accepts subscriptions.
-      g.subscribe("getUser", { args: { id: "1" }, select: { id: true } });
+      g.subscribe({ name: "getUser", args: { id: "1" }, select: { id: true } });
     }
 
     g.bind({
@@ -250,7 +249,7 @@ describe("Unit 7: typed selections and NodeType", () => {
     });
     type GR = AllR<(typeof g)["operations"]>;
     expectTypeOf<GR>().toEqualTypeOf<Clock | Fmt>();
-    const eff = g.execute("getTimed", { select: { stampedAt: true } });
+    const eff = g.execute({ name: "getTimed", select: { stampedAt: true } });
     type ER = typeof eff extends Effect.Effect<any, any, infer R> ? R : never;
     expectTypeOf<ER>().toEqualTypeOf<Clock | Fmt>();
   });

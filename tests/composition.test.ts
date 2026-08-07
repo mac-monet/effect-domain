@@ -28,7 +28,7 @@ describe("Unit 8: provide(layer)", () => {
 
     const provided = g.provide(GreeterLive);
 
-    const exec = provided.execute("getUser", { select: { id: true, greeting: true } });
+    const exec = provided.execute({ name: "getUser", select: { id: true, greeting: true } });
 
     const result = await Effect.runPromise(exec);
     expect(result.greeting).toBe("Hello, Alice!");
@@ -94,7 +94,7 @@ describe("Unit 8: provide() layer composition", () => {
 
     const provided = g.provide(StamperFromGreeter).provide(GreeterLive);
     const result = await Effect.runPromise(
-      provided.execute("getItem", { select: { stamped: true } }),
+      provided.execute({ name: "getItem", select: { stamped: true } }),
     );
     expect(result.stamped).toBe("Hello, STAMP!");
   });
@@ -123,7 +123,7 @@ describe("Unit 8: provide() layer composition", () => {
     }).provide(GreeterLive);
 
     const result = await Effect.runPromise(
-      g.execute("getItem", { select: { id: true, greeting: true } }),
+      g.execute({ name: "getItem", select: { id: true, greeting: true } }),
     );
     expect(result.id).toBe("root");
     expect(result.greeting).toBe("Hello, root!");
@@ -167,8 +167,8 @@ describe("Unit 8: provide() layer lifetime", () => {
     // construction comes from applyLayers, not from run-boundary isolation.
     await Effect.runPromise(
       Effect.gen(function* () {
-        yield* provided.execute("getItem", { select: { greeting: true } });
-        yield* provided.execute("getItem", { select: { greeting: true } });
+        yield* provided.execute({ name: "getItem", select: { greeting: true } });
+        yield* provided.execute({ name: "getItem", select: { greeting: true } });
       }),
     );
 
@@ -183,8 +183,8 @@ describe("Unit 8: provide() layer lifetime", () => {
         Effect.gen(function* () {
           const context = yield* Layer.build(CountingGreeter);
           const provided = domain.provide(Layer.succeedContext(context));
-          yield* provided.execute("getItem", { select: { greeting: true } });
-          yield* provided.execute("getItem", { select: { greeting: true } });
+          yield* provided.execute({ name: "getItem", select: { greeting: true } });
+          yield* provided.execute({ name: "getItem", select: { greeting: true } });
         }),
       ),
     );
@@ -233,11 +233,13 @@ describe("Unit 8: merge via spread", () => {
       Layer.mergeAll(GreeterLive, StamperLive),
     );
 
-    const item = await Effect.runPromise(merged.execute("getItem", { select: { greeting: true } }));
+    const item = await Effect.runPromise(
+      merged.execute({ name: "getItem", select: { greeting: true } }),
+    );
     expect(item.greeting).toBe("Hello, Alice!");
 
     const counter = await Effect.runPromise(
-      merged.execute("getCount", { select: { stamped: true } }),
+      merged.execute({ name: "getCount", select: { stamped: true } }),
     );
     expect(counter.stamped).toBe("STAMPED/7");
   });
@@ -266,13 +268,13 @@ describe("Unit 8: merge via spread (basic)", () => {
     expect(Object.keys(merged.operations).sort()).toEqual(["getCount", "getItem"]);
 
     const item = await Effect.runPromise(
-      merged.execute("getItem", { select: { id: true, name: true } }),
+      merged.execute({ name: "getItem", select: { id: true, name: true } }),
     );
     expect(item.id).toBe("1");
     expect(item.name).toBe("A");
 
     const counter = await Effect.runPromise(
-      merged.execute("getCount", { select: { count: true } }),
+      merged.execute({ name: "getCount", select: { count: true } }),
     );
     expect(counter.count).toBe(42);
   });

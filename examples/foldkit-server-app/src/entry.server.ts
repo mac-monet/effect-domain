@@ -22,12 +22,12 @@ const flagsForRoute = (route: AppRoute) =>
     M.tagsExhaustive({
       Home: () =>
         domain
-          .execute("listUsers", { select: summarySelect })
+          .execute({ name: "listUsers", select: summarySelect })
           .pipe(Effect.map((users) => ({ ...emptyFlags, users }))),
       // UserNotFound leaves `user` null; the view renders the not-found card
       // and the page goes out as a 404.
       User: ({ id }) =>
-        domain.execute("getUser", { args: { id }, select: detailSelect }).pipe(
+        domain.execute({ name: "getUser", args: { id }, select: detailSelect }).pipe(
           Effect.map((user) => ({ ...emptyFlags, user })),
           Effect.catch(() => Effect.succeed(emptyFlags)),
         ),
@@ -51,7 +51,8 @@ const handleCreate = (request: Request) =>
     if (firstName === "" || lastName === "") {
       return redirect("/");
     }
-    const user = yield* domain.execute("createUser", {
+    const user = yield* domain.execute({
+      name: "createUser",
       args: { firstName, lastName },
       select: summarySelect,
     });

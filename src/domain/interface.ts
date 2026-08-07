@@ -79,57 +79,48 @@ export interface DomainInstance<
     Exclude<DomainTypes.ExecuteEntryR<Ops, T[number]>, Provided> | ProvidedR
   >;
   /**
-   * With `reads: true`, additionally collects the walk's {@link ReadSet} —
-   * the deduplicated `(node, key)` pairs of every identified entity the walk
-   * touched — and returns an {@link DomainTypes.Execution} envelope. Only
-   * nodes declaring both a `node()` identifier and an `identity` are
-   * recorded. The foundation for sync-engine invalidation, cache tagging,
-   * and access auditing.
+   * Canonical single form: one dispatch-shaped envelope —
+   * `execute({ name: "getUser", args, select }, options?)`. The envelope
+   * carries only client data (`name`/`args`/`select`); execution policy —
+   * walker `concurrency` and the `reads: true` read-set collection — lives
+   * in `options`, matching the dispatch philosophy. With `reads: true`,
+   * returns an {@link DomainTypes.Execution} envelope with the walk's
+   * {@link ReadSet} — the deduplicated `(node, key)` pairs of every
+   * identified entity the walk touched (only nodes declaring both a
+   * `node()` identifier and an `identity` are recorded); the foundation for
+   * sync-engine invalidation, cache tagging, and access auditing.
+   *
+   * Must stay declared after the array overload: an array can never match
+   * the envelope slot, so inference and error messages are unaffected.
    */
-  execute<
-    K extends DomainTypes.OperationNamesByStream<Ops, false>,
-    const S extends RootSelectionFor<DomainTypes.ExtractType<Ops[K]>>,
-  >(
-    name: K,
-    config: DomainTypes.DomainExecuteConfig<
-      DomainTypes.ExtractType<Ops[K]>,
-      DomainTypes.ExtractArgs<Ops[K]>,
-      S
-    > & { readonly reads: true },
+  execute<const T extends DomainTypes.ExecuteEntry<Ops>>(
+    entry: T,
+    options: { readonly reads: true; readonly concurrency?: number | "unbounded" },
   ): Effect.Effect<
-    DomainTypes.Execution<DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>>,
-    DomainTypes.OperationE<Ops[K]> | ProvidedE,
-    Exclude<DomainTypes.OperationR<Ops[K]>, Provided> | ProvidedR
+    DomainTypes.Execution<DomainTypes.ExecuteEntryResult<Ops, T>>,
+    DomainTypes.ExecuteEntryE<Ops, T> | ProvidedE,
+    Exclude<DomainTypes.ExecuteEntryR<Ops, T>, Provided> | ProvidedR
   >;
-  execute<
-    K extends DomainTypes.OperationNamesByStream<Ops, false>,
-    const S extends RootSelectionFor<DomainTypes.ExtractType<Ops[K]>>,
-  >(
-    name: K,
-    config: DomainTypes.DomainExecuteConfig<
-      DomainTypes.ExtractType<Ops[K]>,
-      DomainTypes.ExtractArgs<Ops[K]>,
-      S
-    >,
+  execute<const T extends DomainTypes.ExecuteEntry<Ops>>(
+    entry: T,
+    options?: { readonly reads?: false; readonly concurrency?: number | "unbounded" },
   ): Effect.Effect<
-    DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
-    DomainTypes.OperationE<Ops[K]> | ProvidedE,
-    Exclude<DomainTypes.OperationR<Ops[K]>, Provided> | ProvidedR
+    DomainTypes.ExecuteEntryResult<Ops, T>,
+    DomainTypes.ExecuteEntryE<Ops, T> | ProvidedE,
+    Exclude<DomainTypes.ExecuteEntryR<Ops, T>, Provided> | ProvidedR
   >;
-  subscribe<
-    K extends DomainTypes.OperationNamesByStream<Ops, true>,
-    const S extends RootSelectionFor<DomainTypes.ExtractType<Ops[K]>>,
-  >(
-    name: K,
-    config: DomainTypes.DomainExecuteConfig<
-      DomainTypes.ExtractType<Ops[K]>,
-      DomainTypes.ExtractArgs<Ops[K]>,
-      S
-    >,
+  /**
+   * Canonical subscription form: one dispatch-shaped envelope —
+   * `subscribe({ name: "watchUser", args, select })`. Walker `concurrency`
+   * (per streamed item) is execution policy and lives in `options`.
+   */
+  subscribe<const T extends DomainTypes.SubscribeEntry<Ops>>(
+    entry: T,
+    options?: { readonly concurrency?: number | "unbounded" },
   ): Stream.Stream<
-    DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
-    DomainTypes.OperationE<Ops[K]> | ProvidedE,
-    Exclude<DomainTypes.OperationR<Ops[K]>, Provided> | ProvidedR
+    DomainTypes.ExecuteEntryResult<Ops, T>,
+    DomainTypes.ExecuteEntryE<Ops, T> | ProvidedE,
+    Exclude<DomainTypes.ExecuteEntryR<Ops, T>, Provided> | ProvidedR
   >;
   inspect(): Inspection;
   /**

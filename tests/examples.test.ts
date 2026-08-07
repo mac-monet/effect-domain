@@ -155,7 +155,8 @@ describe("Examples: HTTP dynamic gateway via domain.dispatch", () => {
 describe("Examples: RPC dynamic gateway via domain.dispatch", () => {
   const program = Effect.gen(function* () {
     const client = rpc.clientFrom(yield* RpcTest.makeClient(rpc.group));
-    const user = yield* client.execute("getUser", {
+    const user = yield* client.execute({
+      name: "getUser",
       args: { id: "1" },
       select: {
         id: true,
@@ -164,10 +165,9 @@ describe("Examples: RPC dynamic gateway via domain.dispatch", () => {
         profile: { select: { location: true } },
       },
     });
-    const list = yield* client.execute("listUsers", {
-      select: { firstName: true },
-    });
-    const created = yield* client.execute("createUser", {
+    const list = yield* client.execute({ name: "listUsers", select: { firstName: true } });
+    const created = yield* client.execute({
+      name: "createUser",
       args: { firstName: "Dana", lastName: "Davis" },
       select: { id: true, fullName: true },
     });

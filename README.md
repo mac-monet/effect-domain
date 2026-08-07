@@ -159,7 +159,8 @@ const rpc = Domain.client(domain, {
 
 const program = Effect.gen(function* () {
   // fails with UserNotFound | GatewayError | TransportError | ... — all typed
-  return yield* client.execute("getUser", {
+  return yield* client.execute({
+    name: "getUser",
     args: { id: "1" },
     select: { id: true, fullName: true },
   });
@@ -245,18 +246,21 @@ const Feed = node("Feed", FeedSchema, {}, { identity: (feed) => `feed:${feed.id}
 
 ## Read Sets
 
-Pass `reads: true` to `execute` and the result arrives in an `Execution`
+Pass `{ reads: true }` as `execute`'s options and the result arrives in an `Execution`
 envelope that additionally reports the deduplicated `(node, key)` pairs of
 every identified entity the walk touched:
 
 ```ts
 const { result, reads } =
   yield *
-  domain.execute("getFeed", {
-    args: { id: "f1" },
-    reads: true,
-    select: { posts: { select: { author: { select: { name: true } } } } },
-  });
+  domain.execute(
+    {
+      name: "getFeed",
+      args: { id: "f1" },
+      select: { posts: { select: { author: { select: { name: true } } } } },
+    },
+    { reads: true },
+  );
 // reads: [{ node: "Feed", key: "feed:f1" }, { node: "Post", key: "p1" }, ...]
 ```
 
@@ -290,7 +294,8 @@ const User = node("User", UserSchema, {
 Selecting posts for a list of users still looks like per-user field resolution:
 
 ```ts
-domain.execute("listUsers", {
+domain.execute({
+  name: "listUsers",
   select: {
     id: true,
     posts: { select: { title: true } },

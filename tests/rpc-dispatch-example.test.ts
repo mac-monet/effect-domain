@@ -16,7 +16,7 @@ describe("Examples: dynamic typed RPC adapter", () => {
   it("round-trips a typed resolver error through the declared schema", async () => {
     const exit = await Effect.runPromiseExit(
       withClient((client) =>
-        client.execute("getUser", { args: { id: "missing" }, select: { id: true } }),
+        client.execute({ name: "getUser", args: { id: "missing" }, select: { id: true } }),
       ),
     );
     const error = Exit.findErrorOption(exit).pipe(Option.getOrThrow);
@@ -28,7 +28,7 @@ describe("Examples: dynamic typed RPC adapter", () => {
     const badArgs = await Effect.runPromiseExit(
       withClient((client) =>
         // @ts-expect-error wrong args shape
-        client.execute("getUser", { args: { nope: true }, select: { id: true } }),
+        client.execute({ name: "getUser", args: { nope: true }, select: { id: true } }),
       ),
     );
     expect(Exit.findErrorOption(badArgs).pipe(Option.getOrThrow)).toBeInstanceOf(ArgsParseError);
@@ -36,7 +36,7 @@ describe("Examples: dynamic typed RPC adapter", () => {
     const badName = await Effect.runPromiseExit(
       withClient((client) =>
         // @ts-expect-error unknown operation
-        client.execute("nope", { select: { id: true } }),
+        client.execute({ name: "nope", select: { id: true } }),
       ),
     );
     expect(Exit.findErrorOption(badName).pipe(Option.getOrThrow)).toBeInstanceOf(UnknownOperation);
@@ -46,7 +46,8 @@ describe("Examples: dynamic typed RPC adapter", () => {
     const users = await Effect.runPromise(
       withClient((client) =>
         Stream.runCollect(
-          client.subscribe("watchUsers", {
+          client.subscribe({
+            name: "watchUsers",
             args: { start: 10 },
             select: { id: true, fullName: true },
           }),
@@ -62,7 +63,7 @@ describe("Examples: dynamic typed RPC adapter", () => {
   it("rejects invalid selections at compile time", () => {
     const program = withClient((client) =>
       // @ts-expect-error bogus is not a selectable field
-      client.execute("getUser", { args: { id: "1" }, select: { bogus: true } }),
+      client.execute({ name: "getUser", args: { id: "1" }, select: { bogus: true } }),
     );
     expect(program).toBeDefined();
   });

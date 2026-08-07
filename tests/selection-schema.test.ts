@@ -692,7 +692,7 @@ describe("Unit 9: selectionSchema — accepts existing test selections", () => {
     const decoded = decodeOk(schema, { id: true, fullName: true });
     const result = await Effect.runPromise(
       // biome-ignore lint/suspicious/noExplicitAny: integration check
-      userGraph.execute("getUser", { args: { id: "1" }, select: decoded as any }),
+      userGraph.execute({ name: "getUser", args: { id: "1" }, select: decoded as any }),
     );
     expect(result.id).toBe("1");
     expect(result.fullName).toBe("Alice Smith");

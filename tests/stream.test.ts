@@ -19,11 +19,7 @@ describe("Unit 6: stream operations", () => {
     });
 
     const results = await Effect.runPromise(
-      Stream.runCollect(
-        g.subscribe("onCount", {
-          select: { value: true, doubled: true },
-        }),
-      ),
+      Stream.runCollect(g.subscribe({ name: "onCount", select: { value: true, doubled: true } })),
     );
 
     expect(results).toHaveLength(3);
@@ -48,10 +44,7 @@ describe("Unit 6: stream operations", () => {
 
     const results = await Effect.runPromise(
       Stream.runCollect(
-        g.subscribe("onMessage", {
-          args: { channel: "general" },
-          select: { text: true },
-        }),
+        g.subscribe({ name: "onMessage", args: { channel: "general" }, select: { text: true } }),
       ),
     );
 
@@ -72,7 +65,7 @@ describe("Unit 6: stream operations", () => {
 
     const collected: Array<Record<string, unknown>> = [];
     const exit = await Effect.runPromiseExit(
-      Stream.runForEach(g.subscribe("onItem", { select: { id: true } }), (item) =>
+      Stream.runForEach(g.subscribe({ name: "onItem", select: { id: true } }), (item) =>
         Effect.sync(() => {
           collected.push(item);
         }),

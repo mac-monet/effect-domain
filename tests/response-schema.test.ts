@@ -753,7 +753,7 @@ describe("Domain.responseSchema", () => {
       fc.asyncProperty(validSelection, async (rawSelection) => {
         const selection = decode(propertyGraph.selectionSchema("getUser"), rawSelection);
         const result = await Effect.runPromise(
-          propertyGraph.execute("getUser", { select: selection as never }),
+          propertyGraph.execute({ name: "getUser", select: selection as never }),
         );
         const responseSchema = propertyGraph.responseSchema("getUser", selection as Selection);
         const decoded = decode(responseSchema, encode(responseSchema, result));
@@ -772,7 +772,7 @@ describe("Domain.responseSchema", () => {
         async (rawSelection, variant) => {
           const selection = decode(unionGraph.selectionSchema("getPet"), rawSelection);
           const result = await Effect.runPromise(
-            unionGraph.execute("getPet", { args: { variant }, select: selection as never }),
+            unionGraph.execute({ name: "getPet", args: { variant }, select: selection as never }),
           );
           const responseSchema = unionGraph.responseSchema("getPet", selection as Selection);
           const decoded = decode(responseSchema, encode(responseSchema, result));
@@ -789,7 +789,7 @@ describe("Domain.responseSchema", () => {
       fc.asyncProperty(unionSelection, async (rawSelection) => {
         const selection = decode(unionGraph.selectionSchema("listPets"), rawSelection);
         const result = await Effect.runPromise(
-          unionGraph.execute("listPets", { select: selection as never }),
+          unionGraph.execute({ name: "listPets", select: selection as never }),
         );
         const responseSchema = unionGraph.responseSchema("listPets", selection as Selection);
         const decoded = decode(responseSchema, encode(responseSchema, result));

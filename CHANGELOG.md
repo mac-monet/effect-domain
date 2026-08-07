@@ -4,6 +4,17 @@
 
 ### Added
 
+- **Envelope single form of `execute` / `subscribe` — the invocation surface
+  is now one shape.** `domain.execute({ name, args, select }, options?)` and
+  `domain.subscribe({ name, args, select })` take the same dispatch-envelope
+  object as the array form and `dispatch`, with full selection-dependent
+  inference. Execution policy stays in `options`
+  (`{ reads?: true, concurrency? }`) — the envelope carries only client
+  data, matching the dispatch philosophy. `Domain.client` mirrors both
+  (`client.execute({ name, args, select })`,
+  `client.subscribe({ name, args, select })`), and `Domain.Erased` gains the
+  untyped envelope forms.
+
 - **Automatic batch coalescing across fields, with key dedup.** Batched
   fields now share one request family when they share a resolve function:
   `Post.author` and `Comment.author` both passing the same `batchUsers`
@@ -48,6 +59,13 @@ env2])` returns the per-envelope `Result`s in entry order — one entry's
   to every entry. An empty array succeeds with `[]`.
 
 ### Breaking
+
+- **Name-first `execute` / `subscribe` calls removed.**
+  `execute("getUser", { args, select })` and its `subscribe` / client /
+  `Erased` mirrors are gone; the envelope form
+  `execute({ name: "getUser", args, select }, options?)` is the only
+  invocation shape. `reads: true` and walker `concurrency` move to the
+  options argument: `execute({ name, args, select }, { reads: true })`.
 
 - **Omitted `select` on node roots is now an error.** Previously an omitted
   selection on an object- or array-of-nodes root executed as the empty

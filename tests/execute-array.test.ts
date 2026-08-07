@@ -134,9 +134,9 @@ describe("execute array overload", () => {
     expect(results).toHaveLength(2);
   });
 
-  it("single-op form is unaffected", async () => {
+  it("single-op envelope form is unaffected", async () => {
     const user = await Effect.runPromise(
-      domain.execute("getUser", { args: { id: "1" }, select: { fullName: true } }),
+      domain.execute({ name: "getUser", args: { id: "1" }, select: { fullName: true } }),
     );
     expect(user).toEqual({ fullName: "Alice Smith" });
     expectTypeOf(user).toEqualTypeOf<{ fullName: string }>();

@@ -21,7 +21,7 @@ describe("domain invariant violations are defects", () => {
         resolve: () => Effect.succeed(null as never),
       }),
     });
-    await expectDies(domain.execute("get", { select: { id: true } }));
+    await expectDies(domain.execute({ name: "get", select: { id: true } }));
   });
 
   it("dies when a resolver returns a non-array for an array root", async () => {
@@ -31,7 +31,7 @@ describe("domain invariant violations are defects", () => {
         resolve: () => Effect.succeed({ id: "1" } as never),
       }),
     });
-    await expectDies(domain.execute("list", { select: { id: true } }));
+    await expectDies(domain.execute({ name: "list", select: { id: true } }));
   });
 
   it("dies when a selection is forced onto an opaque root past the type system", async () => {
@@ -41,7 +41,7 @@ describe("domain invariant violations are defects", () => {
         resolve: () => Effect.succeed(1),
       }),
     });
-    await expectDies(domain.execute("count", { select: { value: true } } as never));
+    await expectDies(domain.execute({ name: "count", select: { value: true } } as never));
   });
 
   it("dies when an unknown operation name is forced past the type system", async () => {
@@ -51,7 +51,7 @@ describe("domain invariant violations are defects", () => {
         resolve: () => Effect.succeed({ id: "1" }),
       }),
     });
-    await expectDies(domain.execute("missing" as never, {} as never));
+    await expectDies(domain.execute({ name: "missing" } as never));
   });
 
   it("dies when an unknown subscription name is forced past the type system", async () => {
@@ -62,7 +62,7 @@ describe("domain invariant violations are defects", () => {
       }),
     });
     await expectDies(
-      Stream.runCollect(domain.subscribe("missing" as never, {} as never)) as Effect.Effect<
+      Stream.runCollect(domain.subscribe({ name: "missing" } as never)) as Effect.Effect<
         unknown,
         never,
         never
@@ -78,7 +78,7 @@ describe("domain invariant violations are defects", () => {
         resolve: (): Effect.Effect<{ id: string }, NotFound> => Effect.fail(new NotFound()),
       }),
     });
-    const effect = domain.execute("get", { select: { id: true } });
+    const effect = domain.execute({ name: "get", select: { id: true } });
     // Compile-time assertion: E is NotFound, with no untyped Error mixed in.
     const _typed: Effect.Effect<unknown, NotFound, never> = effect;
     void _typed;

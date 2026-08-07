@@ -150,7 +150,11 @@ describe("Example: live-query engine on read sets", () => {
     const cursor = initial[initial.length - 1]!.seq;
 
     await Effect.runPromise(
-      domain.execute("renameUser", { args: { id: "u2", name: "Brian K." }, select: { id: true } }),
+      domain.execute({
+        name: "renameUser",
+        args: { id: "u2", name: "Brian K." },
+        select: { id: true },
+      }),
     );
     await Effect.runPromise(engine.invalidate({ node: "User", key: "u2" }));
 

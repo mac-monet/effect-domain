@@ -11,7 +11,8 @@ describe("kitchen sink: execute", () => {
     const stats = makeStats();
     const user = await Effect.runPromise(
       domain
-        .execute("getUser", {
+        .execute({
+          name: "getUser",
           args: { id: "u1" },
           select: {
             id: true,
@@ -87,21 +88,24 @@ describe("kitchen sink: execute", () => {
   it("reads: true dedupes entities, uses the derived Feed key, and skips KSTag", async () => {
     const { reads, result } = await Effect.runPromise(
       domain
-        .execute("getFeed", {
-          args: { id: "f1" },
-          reads: true,
-          select: {
-            id: true,
-            posts: {
-              select: {
-                title: true,
-                tags: { select: { label: true } },
-                author: { select: { id: true } },
-                comments: { select: { author: { select: { id: true } } } },
+        .execute(
+          {
+            name: "getFeed",
+            args: { id: "f1" },
+            select: {
+              id: true,
+              posts: {
+                select: {
+                  title: true,
+                  tags: { select: { label: true } },
+                  author: { select: { id: true } },
+                  comments: { select: { author: { select: { id: true } } } },
+                },
               },
             },
           },
-        })
+          { reads: true },
+        )
         .pipe(Effect.provide(makeLive())),
     );
 
@@ -139,7 +143,8 @@ describe("kitchen sink: execute", () => {
   it("subscribes with a projected selection over streamed posts", async () => {
     const items = await Effect.runPromise(
       Stream.runCollect(
-        domain.subscribe("watchPosts", {
+        domain.subscribe({
+          name: "watchPosts",
           args: { authorId: "u1" },
           select: { title: true, author: { select: { fullName: true } } },
         }),
@@ -154,11 +159,13 @@ describe("kitchen sink: execute", () => {
   it("createPost mutates repo state visible to later operations", async () => {
     const layer = makeLive();
     const program = Effect.gen(function* () {
-      const created = yield* domain.execute("createPost", {
+      const created = yield* domain.execute({
+        name: "createPost",
         args: { title: "Fresh", authorId: "u3" },
         select: { id: true, title: true },
       });
-      const author = yield* domain.execute("getUser", {
+      const author = yield* domain.execute({
+        name: "getUser",
         args: { id: "u3" },
         select: { posts: { select: { title: true } } },
       });

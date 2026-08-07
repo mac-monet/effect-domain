@@ -18,7 +18,8 @@ describe("Examples: persistence-backed domain", () => {
     const observed = stats();
     const result = await Effect.runPromise(
       domain
-        .execute("getUser", {
+        .execute({
+          name: "getUser",
           args: { id: "acct_1" },
           select: { id: true, email: true, displayName: true },
         })
@@ -36,7 +37,8 @@ describe("Examples: persistence-backed domain", () => {
     const observed = stats();
     const result = await Effect.runPromise(
       domain
-        .execute("listUsers", {
+        .execute({
+          name: "listUsers",
           select: {
             displayName: true,
             organization: { select: { name: true } },
@@ -58,10 +60,7 @@ describe("Examples: persistence-backed domain", () => {
     const observed = stats();
     const exit = await Effect.runPromiseExit(
       domain
-        .execute("getUser", {
-          args: { id: "missing" },
-          select: { id: true },
-        })
+        .execute({ name: "getUser", args: { id: "missing" }, select: { id: true } })
         .pipe(Effect.provide(makePersistenceLive(observed))),
     );
 

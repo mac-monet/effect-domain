@@ -42,19 +42,20 @@ export type UserDetail = typeof UserDetail.Type;
 // from the AppClient tag — which client that is depends on the entry.
 export const listUsers = Effect.gen(function* () {
   const client = yield* AppClient;
-  return yield* client.execute("listUsers", { select: summarySelect });
+  return yield* client.execute({ name: "listUsers", select: summarySelect });
 });
 
 export const getUser = (id: string) =>
   Effect.gen(function* () {
     const client = yield* AppClient;
-    return yield* client.execute("getUser", { args: { id }, select: detailSelect });
+    return yield* client.execute({ name: "getUser", args: { id }, select: detailSelect });
   });
 
 export const createUser = (firstName: string, lastName: string) =>
   Effect.gen(function* () {
     const client = yield* AppClient;
-    return yield* client.execute("createUser", {
+    return yield* client.execute({
+      name: "createUser",
       args: { firstName, lastName },
       select: summarySelect,
     });

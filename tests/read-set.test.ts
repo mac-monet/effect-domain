@@ -71,14 +71,17 @@ function keys(reads: ReadSet): ReadonlyArray<string> {
 describe("execute with reads: true", () => {
   it("collects the identified entities the walk touched", async () => {
     const { reads, result } = await Effect.runPromise(
-      domain.execute("getFeed", {
-        args: { id: "f1" },
-        reads: true,
-        select: {
-          id: true,
-          posts: { select: { title: true, author: { select: { name: true } } } },
+      domain.execute(
+        {
+          name: "getFeed",
+          args: { id: "f1" },
+          select: {
+            id: true,
+            posts: { select: { title: true, author: { select: { name: true } } } },
+          },
         },
-      }),
+        { reads: true },
+      ),
     );
     expect(result.id).toBe("f1");
     expect(keys(reads)).toEqual(["Feed:feed:f1", "Post:p1", "Post:p2", "User:a"]);
@@ -86,14 +89,17 @@ describe("execute with reads: true", () => {
 
   it("dedupes repeated entities and skips nodes without identity", async () => {
     const { reads } = await Effect.runPromise(
-      domain.execute("getFeed", {
-        args: { id: "f1" },
-        reads: true,
-        select: {
-          posts: { select: { author: { select: { id: true } } } },
-          tags: { select: { label: true } },
+      domain.execute(
+        {
+          name: "getFeed",
+          args: { id: "f1" },
+          select: {
+            posts: { select: { author: { select: { id: true } } } },
+            tags: { select: { label: true } },
+          },
         },
-      }),
+        { reads: true },
+      ),
     );
     const users = reads.filter((r) => r.node === "User");
     expect(users).toHaveLength(1); // both posts share author "a"
@@ -102,22 +108,20 @@ describe("execute with reads: true", () => {
 
   it("only records entities the selection actually walks", async () => {
     const { reads } = await Effect.runPromise(
-      domain.execute("getFeed", {
-        args: { id: "f1" },
-        reads: true,
-        select: { id: true },
-      }),
+      domain.execute(
+        { name: "getFeed", args: { id: "f1" }, select: { id: true } },
+        { reads: true },
+      ),
     );
     // Root only — posts/authors were never resolved.
     expect(keys(reads)).toEqual(["Feed:feed:f1"]);
   });
 
   it("returns a fresh read set per execution of the same effect", async () => {
-    const effect = domain.execute("getFeed", {
-      args: { id: "f1" },
-      reads: true,
-      select: { id: true },
-    });
+    const effect = domain.execute(
+      { name: "getFeed", args: { id: "f1" }, select: { id: true } },
+      { reads: true },
+    );
     const first = await Effect.runPromise(effect);
     const second = await Effect.runPromise(effect);
     expect(first.reads).toEqual(second.reads);
@@ -126,7 +130,7 @@ describe("execute with reads: true", () => {
 
   it("plain execute is unaffected", async () => {
     const result = await Effect.runPromise(
-      domain.execute("getFeed", { args: { id: "f1" }, select: { id: true } }),
+      domain.execute({ name: "getFeed", args: { id: "f1" }, select: { id: true } }),
     );
     expect(result).not.toHaveProperty("reads");
     expect(result.id).toBe("f1");

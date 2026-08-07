@@ -148,7 +148,8 @@ query GetUser($id: String!) {
 `effect-gql` should translate the validated root field into:
 
 ```ts
-domain.execute("getUser", {
+domain.execute({
+  name: "getUser",
   args: { id: variables.id },
   select: { id: true, fullName: true },
 });
@@ -168,7 +169,8 @@ subscription WatchUsers($start: Int!) {
 `effect-gql` should translate to:
 
 ```ts
-domain.subscribe("watchUsers", {
+domain.subscribe({
+  name: "watchUsers",
   args: { start: variables.start },
   select: { id: true, fullName: true },
 });

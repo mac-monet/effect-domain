@@ -27,7 +27,7 @@ describe("transportHttp", () => {
 
   it("round-trips a typed success over the fetch path", async () => {
     const user = await Effect.runPromise(
-      client.execute("getUser", { args: { id: "1" }, select: { id: true, fullName: true } }),
+      client.execute({ name: "getUser", args: { id: "1" }, select: { id: true, fullName: true } }),
     );
     expect(user.id).toBe("1");
     expect(user.fullName).toBe("Alice Anderson");
@@ -35,7 +35,7 @@ describe("transportHttp", () => {
 
   it("unwraps a declared error carried inside the envelope", async () => {
     const exit = await Effect.runPromiseExit(
-      client.execute("getUser", { args: { id: "missing" }, select: { id: true } }),
+      client.execute({ name: "getUser", args: { id: "missing" }, select: { id: true } }),
     );
     expect(Exit.findErrorOption(exit).pipe(Option.getOrThrow)).toBeInstanceOf(UserNotFound);
   });
@@ -48,7 +48,7 @@ describe("transportHttp", () => {
       }),
     );
     const exit = await Effect.runPromiseExit(
-      failing.execute("getUser", { args: { id: "1" }, select: { id: true } }),
+      failing.execute({ name: "getUser", args: { id: "1" }, select: { id: true } }),
     );
     const error = Exit.findErrorOption(exit).pipe(Option.getOrThrow);
     expect(error).toBeInstanceOf(Domain.TransportError);
@@ -65,7 +65,7 @@ describe("transportHttp", () => {
       }),
     );
     const exit = await Effect.runPromiseExit(
-      offline.execute("getUser", { args: { id: "1" }, select: { id: true } }),
+      offline.execute({ name: "getUser", args: { id: "1" }, select: { id: true } }),
     );
     const error = Exit.findErrorOption(exit).pipe(Option.getOrThrow);
     expect(error).toBeInstanceOf(Domain.TransportError);
@@ -75,7 +75,7 @@ describe("transportHttp", () => {
   it("fails subscriptions with a TransportError", async () => {
     const exit = await Effect.runPromiseExit(
       Stream.runCollect(
-        client.subscribe("watchUsers", { args: { start: 1 }, select: { id: true } }),
+        client.subscribe({ name: "watchUsers", args: { start: 1 }, select: { id: true } }),
       ),
     );
     const error = Exit.findErrorOption(exit).pipe(Option.getOrThrow);

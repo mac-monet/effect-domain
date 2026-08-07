@@ -100,7 +100,7 @@ export namespace Domain {
    */
   export type Client<D, TE = never, R = never> = ClientModule.Client<D, TE, R>;
   /**
-   * Envelope returned by `execute(name, { ..., reads: true })`: the
+   * Envelope returned by `execute(entry, { reads: true })`: the
    * operation result plus per-execution artifacts (currently the walk's
    * read set).
    *
@@ -236,10 +236,6 @@ export namespace Domain {
     inspect(): Inspection;
     /** Erased `DomainInstance.argsSchema` — throws on unknown names. */
     argsSchema(name: string): Schema.Decoder<unknown>;
-    execute(
-      name: string,
-      config: { readonly args?: unknown; readonly select?: unknown },
-    ): Effect.Effect<unknown, unknown>;
     /** Erased array form — results in entry order, untyped. */
     execute(
       entries: ReadonlyArray<{
@@ -249,9 +245,18 @@ export namespace Domain {
       }>,
       options?: { readonly concurrency?: number | "unbounded" },
     ): Effect.Effect<ReadonlyArray<unknown>, unknown>;
+    /** Erased envelope form — the canonical single-op invocation. */
+    execute(
+      entry: { readonly name: string; readonly args?: unknown; readonly select?: unknown },
+      options?: { readonly reads?: boolean; readonly concurrency?: number | "unbounded" },
+    ): Effect.Effect<unknown, unknown>;
     subscribe(
-      name: string,
-      config: { readonly args?: unknown; readonly select?: unknown },
+      entry: {
+        readonly name: string;
+        readonly args?: unknown;
+        readonly select?: unknown;
+      },
+      options?: { readonly concurrency?: number | "unbounded" },
     ): Stream.Stream<unknown, unknown>;
   }
 
@@ -283,8 +288,8 @@ export namespace Domain {
   export type Erasable<D> = {
     inspect(): Inspection;
     argsSchema(name: never): Schema.Decoder<unknown>;
-    execute(name: never, config: never): Effect.Effect<unknown, unknown, unknown>;
-    subscribe(name: never, config: never): Stream.Stream<unknown, unknown, unknown>;
+    execute(entry: never, options?: never): Effect.Effect<unknown, unknown, unknown>;
+    subscribe(entry: never, options?: never): Stream.Stream<unknown, unknown, unknown>;
   } & ([MissingServices<D>] extends [never]
     ? unknown
     : {
@@ -333,7 +338,8 @@ export namespace Domain {
    *   }),
    * })
    *
-   * const user = yield* g.execute("getUser", {
+   * const user = yield* g.execute({
+   *   name: "getUser",
    *   args: { id: "1" },
    *   select: { id: true, fullName: true },
    * })

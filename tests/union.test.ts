@@ -36,7 +36,8 @@ describe("Unit 3: unions and sentinel discrimination", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getOwner", {
+      g.execute({
+        name: "getOwner",
         select: { pet: { select: { _tag: true, name: true, meow: true } } },
       }),
     );
@@ -60,9 +61,7 @@ describe("Unit 3: unions and sentinel discrimination", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getOwner", {
-        select: { pet: { select: { _tag: true, bark: true } } },
-      }),
+      g.execute({ name: "getOwner", select: { pet: { select: { _tag: true, bark: true } } } }),
     );
 
     expect(result.pet).toEqual({ _tag: "dog", bark: "Rex says woof" });
@@ -108,9 +107,7 @@ describe("Unit 3: unions and sentinel discrimination", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getCanvas", {
-        select: { shape: { select: { kind: true, area: true } } },
-      }),
+      g.execute({ name: "getCanvas", select: { shape: { select: { kind: true, area: true } } } }),
     );
 
     const shape = result.shape as { kind: string; area: number };
@@ -129,7 +126,8 @@ describe("Unit 3: unions and sentinel discrimination", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("get", {
+      g.execute({
+        name: "get",
         select: { pet: { select: { _tag: true, name: true, bark: true } } },
       }),
     );
@@ -157,9 +155,7 @@ describe("Unit 3: unions and sentinel discrimination", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getOwner", {
-        select: { pets: { select: { _tag: true, name: true } } },
-      }),
+      g.execute({ name: "getOwner", select: { pets: { select: { _tag: true, name: true } } } }),
     );
 
     expect(result.pets).toEqual([
@@ -185,13 +181,15 @@ describe("Unit 3: unions and sentinel discrimination", () => {
     });
 
     const catRows = await Effect.runPromise(
-      g.execute("listPets", {
+      g.execute({
+        name: "listPets",
         args: { variant: "cat" },
         select: { _tag: true, name: true, meow: true, bark: true },
       }),
     );
     const dogRows = await Effect.runPromise(
-      g.execute("listPets", {
+      g.execute({
+        name: "listPets",
         args: { variant: "dog" },
         select: { _tag: true, name: true, meow: true, bark: true },
       }),
@@ -226,7 +224,7 @@ describe("Unit 3: unions and sentinel discrimination", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("get", { select: { profile: { select: { bio: true, upper: true } } } }),
+      g.execute({ name: "get", select: { profile: { select: { bio: true, upper: true } } } }),
     );
 
     expect(result.profile).toEqual({ bio: "hello", upper: "HELLO" });
@@ -243,7 +241,7 @@ describe("Union as operation type", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getPet", { select: { _tag: true, name: true, meow: true } }),
+      g.execute({ name: "getPet", select: { _tag: true, name: true, meow: true } }),
     );
 
     expect(result._tag).toBe("cat");
@@ -260,7 +258,7 @@ describe("Union as operation type", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getPet", { select: { _tag: true, name: true, bark: true } }),
+      g.execute({ name: "getPet", select: { _tag: true, name: true, bark: true } }),
     );
 
     expect(result._tag).toBe("dog");
@@ -280,7 +278,7 @@ describe("Union as operation type", () => {
     });
 
     const exit = await Effect.runPromiseExit(
-      g.execute("getPet", { select: { _tag: true, name: true } }),
+      g.execute({ name: "getPet", select: { _tag: true, name: true } }),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -306,7 +304,7 @@ describe("Union as operation type", () => {
     });
 
     const exit = await Effect.runPromiseExit(
-      g.execute("get", { select: { pet: { select: { _tag: true } } } }),
+      g.execute({ name: "get", select: { pet: { select: { _tag: true } } } }),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -328,7 +326,7 @@ describe("Union as operation type", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("get", { select: { pet: { select: { _tag: true, meow: true } } } }),
+      g.execute({ name: "get", select: { pet: { select: { _tag: true, meow: true } } } }),
     );
 
     expect(result.pet).toEqual({ _tag: "cat", meow: "Whiskers says meow" });
@@ -352,7 +350,7 @@ describe("Union as operation type", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("get", { select: { pet: { select: { _tag: true, bark: true } } } }),
+      g.execute({ name: "get", select: { pet: { select: { _tag: true, bark: true } } } }),
     );
 
     expect(result.pet).toEqual({ _tag: "dog", bark: "Rex says woof" });
@@ -378,7 +376,8 @@ describe("Union as operation type", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getOwner", {
+      g.execute({
+        name: "getOwner",
         select: { pets: { select: { _tag: true, name: true, meow: true, bark: true } } },
       }),
     );
@@ -413,9 +412,7 @@ describe("Schema.Class union members", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getOwner", {
-        select: { shape: { select: { _tag: true, side: true } } },
-      }),
+      g.execute({ name: "getOwner", select: { shape: { select: { _tag: true, side: true } } } }),
     );
 
     expect(result.shape).toEqual({ _tag: "square", side: 4 });

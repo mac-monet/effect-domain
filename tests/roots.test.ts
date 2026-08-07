@@ -48,7 +48,7 @@ describe("Unit 12: root output generalization", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("listUsers", { select: { id: true, fullName: true } }),
+      g.execute({ name: "listUsers", select: { id: true, fullName: true } }),
     );
 
     expect(result).toEqual([
@@ -71,7 +71,7 @@ describe("Unit 12: root output generalization", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("listUsers", { select: { id: true, fullName: true } }),
+      g.execute({ name: "listUsers", select: { id: true, fullName: true } }),
     );
 
     expect(result).toEqual([
@@ -89,7 +89,7 @@ describe("Unit 12: root output generalization", () => {
       }),
     });
 
-    const result = await Effect.runPromise(g.execute("countUsers", {}));
+    const result = await Effect.runPromise(g.execute({ name: "countUsers" }));
 
     expect(result).toBe(2);
   });
@@ -102,7 +102,7 @@ describe("Unit 12: root output generalization", () => {
       }),
     });
 
-    const result = await Effect.runPromise(g.execute("listIds", {}));
+    const result = await Effect.runPromise(g.execute({ name: "listIds" }));
 
     expect(result).toEqual(["1", "2"]);
   });
@@ -116,7 +116,7 @@ describe("Unit 12: root output generalization", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("listUserGroups", { select: { id: true, fullName: true } }),
+      g.execute({ name: "listUserGroups", select: { id: true, fullName: true } }),
     );
 
     expect(result).toEqual([[{ id: "1", fullName: "Nested User" }]]);
@@ -131,7 +131,7 @@ describe("Unit 12: root output generalization", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("maybeUserGroups", { select: { id: true, fullName: true } }),
+      g.execute({ name: "maybeUserGroups", select: { id: true, fullName: true } }),
     );
 
     expect(result).toEqual([[{ id: "1", fullName: "Nested User" }]]);
@@ -146,7 +146,7 @@ describe("Unit 12: root output generalization", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("maybeUserGroups", { select: { id: true, fullName: true } }),
+      g.execute({ name: "maybeUserGroups", select: { id: true, fullName: true } }),
     );
 
     expect(result).toBeNull();
@@ -161,7 +161,7 @@ describe("Unit 12: root output generalization", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getMaybeUser", { select: { id: true, fullName: true } }),
+      g.execute({ name: "getMaybeUser", select: { id: true, fullName: true } }),
     );
 
     expect(result).toBeNull();
@@ -176,7 +176,7 @@ describe("Unit 12: root output generalization", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getMaybeUser", { select: { id: true, fullName: true } }),
+      g.execute({ name: "getMaybeUser", select: { id: true, fullName: true } }),
     );
 
     expect(result).toEqual({ id: "1", fullName: "Alice Smith" });
@@ -191,7 +191,7 @@ describe("Unit 12: root output generalization", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getMaybeUsers", { select: { id: true, fullName: true } }),
+      g.execute({ name: "getMaybeUsers", select: { id: true, fullName: true } }),
     );
 
     expect(result).toEqual([{ id: "1", fullName: "Alice Smith" }]);
@@ -206,7 +206,7 @@ describe("Unit 12: root output generalization", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getPet", { select: { _tag: true, name: true, meow: true, bark: true } }),
+      g.execute({ name: "getPet", select: { _tag: true, name: true, meow: true, bark: true } }),
     );
 
     expect(result._tag).toBe("dog");
@@ -240,7 +240,8 @@ describe("Unit 12: root output generalization", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getPet", {
+      g.execute({
+        name: "getPet",
         select: { _tag: true, toys: { select: { name: true } } } as never,
       }),
     );
@@ -283,7 +284,8 @@ describe("Unit 12: root output generalization", () => {
     });
 
     const result = await Effect.runPromise(
-      g.execute("getOwner", {
+      g.execute({
+        name: "getOwner",
         select: { pet: { select: { _tag: true, toys: { select: { name: true } } } } } as never,
       }),
     );
@@ -302,7 +304,8 @@ describe("Unit 12: root output generalization", () => {
       }),
     });
 
-    const result = g.execute("getPet", {
+    const result = g.execute({
+      name: "getPet",
       select: { _tag: true, name: true, meow: true, bark: true },
     });
     type R = typeof result extends Effect.Effect<infer A, any, any> ? A : never;
@@ -322,7 +325,7 @@ describe("Unit 12: root output generalization", () => {
       }),
     });
 
-    const result = g.execute("getMaybeUser", { select: { id: true } });
+    const result = g.execute({ name: "getMaybeUser", select: { id: true } });
     type R = typeof result extends Effect.Effect<infer A, any, any> ? A : never;
     expectTypeOf<R>().toEqualTypeOf<null | { id: string }>();
   });
@@ -335,7 +338,7 @@ describe("Unit 12: root output generalization", () => {
       }),
     });
 
-    const result = g.execute("listMaybeUsers", { select: { id: true } });
+    const result = g.execute({ name: "listMaybeUsers", select: { id: true } });
     type R = typeof result extends Effect.Effect<infer A, any, any> ? A : never;
     expectTypeOf<R>().toEqualTypeOf<Array<null | { id: string }>>();
   });
@@ -349,7 +352,7 @@ describe("Unit 12: root output generalization", () => {
     });
 
     const exit = await Effect.runPromiseExit(
-      g.execute("ping", { select: { value: true } } as never),
+      g.execute({ name: "ping", select: { value: true } } as never),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -420,7 +423,7 @@ describe("Unit 12: root output generalization", () => {
         resolve: () => Effect.succeed(1),
       }),
     });
-    const scalarResult = scalarGraph.execute("countUsers", {});
+    const scalarResult = scalarGraph.execute({ name: "countUsers" });
     type ScalarResult = typeof scalarResult extends Effect.Effect<infer A, any, any> ? A : never;
     expectTypeOf<ScalarResult>().toEqualTypeOf<number>();
 
@@ -430,7 +433,7 @@ describe("Unit 12: root output generalization", () => {
         resolve: () => Effect.succeed([]),
       }),
     });
-    const arrayResult = arrayGraph.execute("listUsers", { select: { id: true } });
+    const arrayResult = arrayGraph.execute({ name: "listUsers", select: { id: true } });
     type ArrayResult = typeof arrayResult extends Effect.Effect<infer A, any, any> ? A : never;
     expectTypeOf<ArrayResult>().toEqualTypeOf<Array<{ id: string }>>();
 
@@ -440,7 +443,10 @@ describe("Unit 12: root output generalization", () => {
         resolve: () => Effect.succeed([]),
       }),
     });
-    const nestedArrayResult = nestedArrayGraph.execute("listUserGroups", { select: { id: true } });
+    const nestedArrayResult = nestedArrayGraph.execute({
+      name: "listUserGroups",
+      select: { id: true },
+    });
     type NestedArrayResult =
       typeof nestedArrayResult extends Effect.Effect<infer A, any, any> ? A : never;
     expectTypeOf<NestedArrayResult>().toEqualTypeOf<Array<Array<{ id: string }>>>();

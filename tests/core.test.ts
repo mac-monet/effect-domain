@@ -28,10 +28,7 @@ const domain = Domain.make({
 describe("Unit 1: minimal e2e", () => {
   it("resolves a computed field via execute()", async () => {
     const result = await Effect.runPromise(
-      domain.execute("getUser", {
-        args: { id: "1" },
-        select: { id: true, fullName: true },
-      }),
+      domain.execute({ name: "getUser", args: { id: "1" }, select: { id: true, fullName: true } }),
     );
 
     expect(result).toEqual({ id: "1", fullName: "Alice Smith" });
@@ -39,7 +36,8 @@ describe("Unit 1: minimal e2e", () => {
 
   it("returns plain data fields via property access", async () => {
     const result = await Effect.runPromise(
-      domain.execute("getUser", {
+      domain.execute({
+        name: "getUser",
         args: { id: "2" },
         select: { id: true, firstName: true, lastName: true },
       }),
@@ -52,10 +50,7 @@ describe("Unit 1: minimal e2e", () => {
 
   it("excludes unselected fields from result", async () => {
     const result = await Effect.runPromise(
-      domain.execute("getUser", {
-        args: { id: "3" },
-        select: { id: true },
-      }),
+      domain.execute({ name: "getUser", args: { id: "3" }, select: { id: true } }),
     );
 
     expect(result.id).toBe("3");
@@ -83,10 +78,7 @@ describe("Unit 1: minimal e2e", () => {
     });
 
     await Effect.runPromise(
-      g.execute("getUser", {
-        args: { id: "1" },
-        select: { id: true, fullName: true },
-      }),
+      g.execute({ name: "getUser", args: { id: "1" }, select: { id: true, fullName: true } }),
     );
 
     expect(receivedSelections).toEqual(new Set(["id", "fullName"]));
@@ -116,7 +108,8 @@ describe("Unit 1: minimal e2e", () => {
     });
 
     await Effect.runPromise(
-      g.execute("getUser", {
+      g.execute({
+        name: "getUser",
         args: { id: "1" },
         select: { profile: { select: { bio: true } } },
       }),
@@ -144,7 +137,7 @@ describe("Unit 1: minimal e2e", () => {
       }),
     });
 
-    const result = await Effect.runPromise(g.execute("get", { select: { full: true } }));
+    const result = await Effect.runPromise(g.execute({ name: "get", select: { full: true } }));
 
     expect(result.full).toBe("Bob Jones");
   });
@@ -157,7 +150,7 @@ describe("Unit 1: minimal e2e", () => {
       }),
     });
 
-    const result = await Effect.runPromise(g.execute("ping", { select: { ok: true } }));
+    const result = await Effect.runPromise(g.execute({ name: "ping", select: { ok: true } }));
 
     expect(result.ok).toBe(true);
   });
@@ -178,7 +171,7 @@ describe("Unit 1: minimal e2e", () => {
     });
 
     const error = await Effect.runPromise(
-      Effect.flip(g.execute("get", { select: { id: true, boom: true } })),
+      Effect.flip(g.execute({ name: "get", select: { id: true, boom: true } })),
     );
 
     expect(error).toBe("resolver error");

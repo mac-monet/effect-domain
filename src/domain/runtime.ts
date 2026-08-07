@@ -384,12 +384,16 @@ function makeDomainWithLayers<
       return analyzeSelection(selection);
     },
     execute(
-      nameOrEntries: string | ReadonlyArray<{ readonly name: string } & InternalConfig>,
-      config?: InternalConfig | { readonly concurrency?: number | "unbounded" },
+      entryOrEntries:
+        | ({ readonly name: string } & InternalConfig)
+        | ReadonlyArray<{ readonly name: string } & InternalConfig>,
+      config?: {
+        readonly reads?: boolean;
+        readonly concurrency?: number | "unbounded";
+      },
     ) {
-      if (Array.isArray(nameOrEntries)) {
-        if (nameOrEntries.length === 0) return Effect.succeed([]);
-        const options = config as { readonly concurrency?: number | "unbounded" } | undefined;
+      if (Array.isArray(entryOrEntries)) {
+        if (entryOrEntries.length === 0) return Effect.succeed([]);
         // Layers apply once around the whole batch, so provided layers
         // build once and every entry shares their services.
         return applyLayers(
@@ -397,17 +401,34 @@ function makeDomainWithLayers<
             // Entries carry only args/select by contract — strip anything else
             // (an untyped caller's per-entry `reads`/`concurrency`) so the
             // runtime matches the declared entry shape.
-            nameOrEntries.map((entry) =>
+            entryOrEntries.map((entry) =>
               executeOperationRaw(entry.name, { args: entry.args, select: entry.select }),
             ),
-            { concurrency: options?.concurrency ?? "unbounded" },
+            { concurrency: config?.concurrency ?? "unbounded" },
           ),
         );
       }
-      return executeOperation(nameOrEntries as string, (config as InternalConfig) ?? {});
+      // Envelope form: client data in the envelope, execution policy
+      // (reads/concurrency) in options.
+      // Array.isArray doesn't narrow ReadonlyArray out of the union.
+      const entry = entryOrEntries as { readonly name: string } & InternalConfig;
+      const options = config;
+      return executeOperation(entry.name, {
+        ...(entry.args !== undefined ? { args: entry.args } : {}),
+        ...(entry.select !== undefined ? { select: entry.select } : {}),
+        ...(options?.concurrency !== undefined ? { concurrency: options.concurrency } : {}),
+        ...(options?.reads !== undefined ? { reads: options.reads } : {}),
+      });
     },
-    subscribe(name: string, config: InternalConfig) {
-      return subscribeOperation(name, config);
+    subscribe(
+      entry: { readonly name: string } & InternalConfig,
+      options?: { readonly concurrency?: number | "unbounded" },
+    ) {
+      return subscribeOperation(entry.name, {
+        ...(entry.args !== undefined ? { args: entry.args } : {}),
+        ...(entry.select !== undefined ? { select: entry.select } : {}),
+        ...(options?.concurrency !== undefined ? { concurrency: options.concurrency } : {}),
+      });
     },
     inspect() {
       return inspectOperations(registry);

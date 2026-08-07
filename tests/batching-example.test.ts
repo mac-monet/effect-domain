@@ -13,7 +13,8 @@ describe("Examples: Effect request batching for N+1", () => {
 
     const result = await Effect.runPromise(
       domain
-        .execute("listUsers", {
+        .execute({
+          name: "listUsers",
           select: {
             id: true,
             posts: { select: { title: true } },

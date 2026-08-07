@@ -61,7 +61,7 @@ describe("projection shape regressions", () => {
     }) as Selection;
 
     const executed = await Effect.runPromise(
-      domain.execute("maybeUserGroups", { select: selection }),
+      domain.execute({ name: "maybeUserGroups", select: selection }),
     );
     const dispatched = await Effect.runPromise(
       domain.dispatch({ name: "maybeUserGroups", select: selection }),
@@ -89,7 +89,9 @@ describe("projection shape regressions", () => {
       bark: true,
     }) as Selection;
 
-    const executed = await Effect.runPromise(domain.execute("listPets", { select: selection }));
+    const executed = await Effect.runPromise(
+      domain.execute({ name: "listPets", select: selection }),
+    );
     const dispatched = await Effect.runPromise(
       domain.dispatch({ name: "listPets", select: selection }),
     );
@@ -116,7 +118,7 @@ describe("projection shape regressions", () => {
       fullName: true,
     }) as Selection;
 
-    const executed = await Effect.runPromise(domain.execute("get", { select: selection }));
+    const executed = await Effect.runPromise(domain.execute({ name: "get", select: selection }));
     const dispatched = await Effect.runPromise(domain.dispatch({ name: "get", select: selection }));
     const responseSchema = domain.responseSchema("get", selection);
     const decoded = decode(responseSchema, toWire(responseSchema, executed));
@@ -143,10 +145,10 @@ describe("projection shape regressions", () => {
     );
     expect(decode(domain.responseSchema("get", undefined), "opaque")).toBe("opaque");
 
-    const executed = await Effect.runPromise(domain.execute("get", {}));
+    const executed = await Effect.runPromise(domain.execute({ name: "get" }));
     expect(executed).toBe("opaque");
     const forcedExecute = await Effect.runPromiseExit(
-      domain.execute("get", { select: { id: true } } as never),
+      domain.execute({ name: "get", select: { id: true } } as never),
     );
     expect(forcedExecute._tag).toBe("Failure");
 
@@ -173,10 +175,10 @@ describe("projection shape regressions", () => {
     const raw = [{ id: "1", firstName: "Ada", lastName: "Lovelace" }];
     expect(decode(domain.responseSchema("get", undefined), raw)).toEqual(raw);
 
-    const executed = await Effect.runPromise(domain.execute("get", {}));
+    const executed = await Effect.runPromise(domain.execute({ name: "get" }));
     expect(executed).toEqual(raw);
     const forcedExecute = await Effect.runPromiseExit(
-      domain.execute("get", { select: { id: true } } as never),
+      domain.execute({ name: "get", select: { id: true } } as never),
     );
     expect(forcedExecute._tag).toBe("Failure");
 
@@ -206,10 +208,10 @@ describe("projection shape regressions", () => {
     );
     expect(decode(domain.responseSchema("get", undefined), raw)).toEqual(raw);
 
-    const executed = await Effect.runPromise(domain.execute("get", {}));
+    const executed = await Effect.runPromise(domain.execute({ name: "get" }));
     expect(executed).toEqual(raw);
     const forcedExecute = await Effect.runPromiseExit(
-      domain.execute("get", { select: { id: true } } as never),
+      domain.execute({ name: "get", select: { id: true } } as never),
     );
     expect(forcedExecute._tag).toBe("Failure");
 
@@ -239,10 +241,10 @@ describe("projection shape regressions", () => {
     );
     expect(decode(domain.responseSchema("get", undefined), raw)).toEqual(raw);
 
-    const executed = await Effect.runPromise(domain.execute("get", {}));
+    const executed = await Effect.runPromise(domain.execute({ name: "get" }));
     expect(executed).toEqual(raw);
     const forcedExecute = await Effect.runPromiseExit(
-      domain.execute("get", { select: { id: true } } as never),
+      domain.execute({ name: "get", select: { id: true } } as never),
     );
     expect(forcedExecute._tag).toBe("Failure");
 
