@@ -1,6 +1,11 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { domain, makeReposLive, type BatchingStats } from "../examples/batching.ts";
+import {
+  crossEntryProgram,
+  domain,
+  makeReposLive,
+  type BatchingStats,
+} from "../examples/batching.ts";
 
 describe("Examples: Effect request batching for N+1", () => {
   it("loads selected relation-like fields in one batched resolver call", async () => {
@@ -22,5 +27,20 @@ describe("Examples: Effect request batching for N+1", () => {
 
     const firstPosts = result[0]!.posts;
     expect(firstPosts[0]!.title).toBe("Post by Alice");
+  });
+
+  it("batched fields coalesce across array-form entries", async () => {
+    const stats: BatchingStats = { postBatchCalls: 0, lastAuthorIds: [] };
+
+    const [users, user] = await Effect.runPromise(
+      crossEntryProgram.pipe(Effect.provide(makeReposLive(stats))),
+    );
+
+    expect(stats.postBatchCalls).toBe(1);
+    // One batched call carrying every entry's keys ("u1" arrives once per
+    // requesting entry — batch keys are not deduplicated, read sets are).
+    expect([...new Set(stats.lastAuthorIds)].sort()).toEqual(["u1", "u2", "u3"]);
+    expect(users).toHaveLength(3);
+    expect(user.posts[0]!.title).toBe("Post by Alice");
   });
 });

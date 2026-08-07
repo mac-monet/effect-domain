@@ -71,7 +71,28 @@ export const domain = Domain.make({
         return yield* repo.listAll;
       }),
   }),
+  getUser: operation({
+    type: User,
+    args: Schema.Struct({ id: Schema.String }),
+    resolve: ({ args }) =>
+      Effect.gen(function* () {
+        const repo = yield* UserRepo;
+        const users = yield* repo.listAll;
+        const user = users.find((u) => u.id === args.id);
+        if (!user) return yield* Effect.die(new Error(`no user ${args.id}`));
+        return user;
+      }),
+  }),
 });
+
+// Batching crosses operations too: the array form of `execute` runs entries
+// in one fiber tree, so every selected `posts` field — across both entries —
+// lands in a single findByAuthorIds([...]) call. Observe it via
+// BatchingStats.postBatchCalls === 1.
+export const crossEntryProgram = domain.execute([
+  { name: "listUsers", select: { id: true, posts: { select: { title: true } } } },
+  { name: "getUser", args: { id: "u1" }, select: { posts: { select: { title: true } } } },
+]);
 
 export function makeReposLive(stats: BatchingStats) {
   const users: ReadonlyArray<UserRow> = [

@@ -32,9 +32,11 @@ system does the work GraphQL outsources to build tooling.
 A domain value can be projected onto surfaces without restating anything:
 
 - **In-process API** — `domain.execute(name, { args, select })` runs an
-  operation directly and returns exactly the selected tree, fully typed. This
-  is the whole backend-internal calling convention; workers, CLIs, and tests
-  use nothing else.
+  operation directly and returns exactly the selected tree, fully typed. The
+  array form — `execute([{ name, args, select }, ...])` — runs several
+  operations as one call, tuple-typed per entry, with batched fields
+  coalescing across entries. This is the whole backend-internal calling
+  convention; workers, CLIs, and tests use nothing else.
 - **Wire protocol** — `domain.handleDispatch` is a complete server boundary in
   one function: it validates a request envelope, executes, and encodes the
   result — declared errors inside the envelope, so the handler's error channel

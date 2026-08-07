@@ -176,7 +176,9 @@ export function makeLiveQueryEngine<R>(domain: LiveQueryDomain<R>) {
     invalidate(entity: EntityRef): Effect.Effect<void, never, R> {
       const id = entityId(entity);
       const affected = Array.from(queries.values()).filter((stored) => stored.dependencies.has(id));
-      return Effect.forEach(affected, run, { discard: true });
+      // Concurrent re-runs share one batching window, so affected queries'
+      // batched fields coalesce instead of issuing one round per query.
+      return Effect.forEach(affected, run, { concurrency: "unbounded", discard: true });
     },
 
     pull(request: PullRequest): ReadonlyArray<LiveQueryEvent> {

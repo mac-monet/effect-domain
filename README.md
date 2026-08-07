@@ -189,6 +189,19 @@ selections, such as RPC route declarations and typed clients. Dynamic gateways
 should avoid synthesizing response schemas for arbitrary user-controlled
 selections unless they bound or reuse the selection set.
 
+The derived schemas are ordinary Effect Schemas, so JSON Schema export for
+non-TypeScript consumers is one call — no OpenAPI pipeline required:
+
+```ts
+import { Schema } from "effect";
+
+Schema.toJsonSchemaDocument(domain.argsSchema("getUser")).schema;
+// { type: "object", properties: { id: { type: "string" } }, required: ["id"], ... }
+
+Schema.toJsonSchemaDocument(domain.responseSchema("getUser", { id: true, fullName: true })).schema;
+// { type: "object", properties: { id: ..., fullName: ... }, ... }
+```
+
 Invocation keys default to compact 8-byte / 16-hex-character SHA-256 prefixes.
 Use a longer key for durable or global idempotency stores:
 
@@ -290,6 +303,21 @@ The batching primitive is backend-agnostic. A resolver can batch through SQL,
 a KV store, a cache, another HTTP service, or an in-memory map. effect-domain
 only describes when a selected field should be resolved and how to derive its
 batch key.
+
+Batching also crosses operations. `execute` accepts an array of
+dispatch-shaped entries and returns a tuple typed per entry; entries run
+concurrently in one fiber tree, so batched fields coalesce **across**
+entries:
+
+```ts
+const [users, user] =
+  yield *
+  domain.execute([
+    { name: "listUsers", select: { id: true, posts: { select: { title: true } } } },
+    { name: "getUser", args: { id: "1" }, select: { posts: { select: { title: true } } } },
+  ]);
+// posts for both result sets arrive via one findByAuthorIds([...]) call
+```
 
 ## More
 
