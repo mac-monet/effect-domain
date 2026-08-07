@@ -5,9 +5,10 @@
 // examples use. Effect ships the MCP protocol itself
 // (`effect/unstable/ai/McpServer`), so this file is only the mapping.
 //
-// Selections ride along as an optional `select` tool parameter, validated by
-// the gateway like any other wire dispatch — agents can narrow their read set
-// per call, or omit it for the default selection.
+// Selections ride along as a `select` tool parameter, validated by the
+// gateway like any other wire dispatch — agents state their read set per
+// call. Object-shaped operations require one (there is no implicit full
+// selection); scalar operations take none.
 import { Effect, Layer, Schema } from "effect";
 import { McpServer, Tool, Toolkit } from "effect/unstable/ai";
 import type { AnyOperationDef } from "../src/define.ts";
@@ -40,7 +41,7 @@ export const makeDomainMcp = <Ops extends Record<string, AnyOperationDef>>(
           ...(op.args === null ? {} : { args: argsJsonSchema(op.args) }),
           select: {
             description:
-              "Optional field selection, e.g. { id: true, fullName: true }. Omit for the default selection.",
+              "Field selection, e.g. { id: true, fullName: true }. Required for object-shaped operations; omit for scalar operations.",
           },
         },
         ...(op.args === null ? {} : { required: ["args"] }),

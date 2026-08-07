@@ -10,7 +10,6 @@ import { Schema, SchemaAST } from "effect";
 export type DynamicCodec = Schema.Codec<unknown, unknown, never, never>;
 
 export const unknownCodec: DynamicCodec = Schema.Unknown as DynamicCodec;
-export const undefinedCodec: DynamicCodec = Schema.Undefined as DynamicCodec;
 
 // These helpers are the named widening boundary for runtime-built schemas.
 // Callers should compose DynamicCodec values instead of writing inline casts.

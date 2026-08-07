@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { describe, expect, expectTypeOf, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { field, Domain, node, operation } from "../src/index.ts";
 
 const User = node(
@@ -188,11 +188,9 @@ describe("Unit 12: selectionSchema — root output shapes", () => {
     expect(decodeFails(schema, { users: { select: { id: true } } })).toBe(true);
   });
 
-  it("projectable roots accept omitted selection", () => {
+  it("projectable roots reject omitted selection", () => {
     const schema = userGraph.selectionSchema("getUser");
-    type Decoded = Schema.Schema.Type<typeof schema>;
-    expectTypeOf<undefined>().toMatchTypeOf<Decoded>();
-    expect(decodeOk(schema, undefined)).toBeUndefined();
+    expect(decodeFails(schema, undefined)).toBe(true);
   });
 
   it("scalar roots accept only omitted selection", () => {
@@ -225,7 +223,7 @@ describe("Unit 12: selectionSchema — root output shapes", () => {
     });
 
     const schema = g.selectionSchema("listUserGroups");
-    expect(decodeOk(schema, undefined)).toBeUndefined();
+    expect(decodeFails(schema, undefined)).toBe(true);
     expect(decodeOk(schema, { id: true, fullName: true })).toEqual({
       id: true,
       fullName: true,

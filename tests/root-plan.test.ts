@@ -198,7 +198,7 @@ describe("root plan interpreter agreement", () => {
   it("selectionSchema accepts element selections for nullable array roots", () => {
     const schema = nullableList.selectionSchema("maybeUsers");
     expect(decode(schema, { id: true, fullName: true })).toEqual({ id: true, fullName: true });
-    expect(decode(schema, undefined)).toBeUndefined();
+    expect(() => decode(schema, undefined)).toThrow();
     expect(() => decode(schema, { unknownField: true })).toThrow();
   });
 
@@ -234,6 +234,16 @@ describe("root plan interpreter agreement", () => {
     );
     expect(() => opaqueList.responseSchema("listIds", { id: true } as never)).toThrow(
       /opaque root does not accept a selection/,
+    );
+  });
+
+  it("all three interpreters reject omitted selection on node roots", async () => {
+    // Nullable root with a null result: the selection check must fire before
+    // the null early-return.
+    await expectDies(nullableList.execute("maybeUsers", { args: { empty: true } } as never));
+    expect(() => decode(nullableList.selectionSchema("maybeUsers"), undefined)).toThrow();
+    expect(() => nullableList.responseSchema("maybeUsers", undefined as never)).toThrow(
+      /selection is required for node roots/,
     );
   });
 

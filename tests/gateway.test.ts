@@ -215,11 +215,13 @@ describe("dispatch — all outcomes as Result values", () => {
     expect(Result.getOrThrow(out)).toBe("pong");
   });
 
-  it("projectable root omitted select remains an empty projection", async () => {
+  it("projectable root omitted select → SelectionParseError", async () => {
     const out = await Effect.runPromise(domain.dispatch({ name: "getUser", args: { id: "1" } }));
 
-    expect(Result.isSuccess(out)).toBe(true);
-    expect(Result.getOrThrow(out)).toEqual({});
+    expect(Result.isFailure(out)).toBe(true);
+    const err = (out as Result.Failure<unknown, SelectionParseError>).failure;
+    expect(err._tag).toBe("SelectionParseError");
+    expect(err.operation).toBe("getUser");
   });
 
   it("scalar root concrete select → SelectionParseError", async () => {

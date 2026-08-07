@@ -39,14 +39,18 @@ export function rootToResponseSchema(
   selection: Selection | undefined,
 ): DynamicCodec {
   // Validate before the cache: `{}` and `undefined` canonicalize to the same
-  // cache key (they build the same codec on projectable roots), but only
-  // `undefined` is legal on opaque roots — a cached opaque-root codec must
-  // not mask the rejection of a concrete selection.
+  // cache key, but they are not interchangeable — `undefined` is legal only
+  // on opaque roots, `{}` only on node roots — so a cached codec must not
+  // mask either rejection.
+  const plan = registry.rootPlanFor(ast);
   if (selection !== undefined) {
-    const plan = registry.rootPlanFor(ast);
     if (plan._tag === "OpaqueRoot") {
       throw opaqueRootSelectionError(plan.reason);
     }
+  } else if (plan._tag !== "OpaqueRoot") {
+    // Mirrors the wire boundary: node roots have no implicit full (or empty)
+    // selection, so a response schema without one is a caller bug.
+    throw new Error("responseSchema: selection is required for node roots");
   }
   const selectionKey = cacheKey(selection);
   const cached = getCached(rootResponseCache, ast, selectionKey);
@@ -78,12 +82,21 @@ function rootBaseResponseSchema(
 ): DynamicCodec {
   switch (plan._tag) {
     case "ObjectRoot":
-      return nodeToResponseSchema(registry, plan.schemaTarget, selection ?? {});
+      return nodeToResponseSchema(registry, plan.schemaTarget, requireSelection(selection));
     case "ArrayRoot":
-      return arrayCodec(rootElementToResponseSchema(registry, plan.element, selection ?? {}));
+      return arrayCodec(
+        rootElementToResponseSchema(registry, plan.element, requireSelection(selection)),
+      );
     case "OpaqueRoot":
       return codecFromAst(plan.codecAst);
   }
+}
+
+function requireSelection(selection: Selection | undefined): Selection {
+  if (selection === undefined) {
+    throw new Error("responseSchema: selection is required for node roots");
+  }
+  return selection;
 }
 
 function opaqueRootSelectionError(reason: string | undefined): Error {

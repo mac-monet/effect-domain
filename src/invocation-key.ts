@@ -116,8 +116,11 @@ function canonicalizeSelectionInner(select: unknown): Record<string, unknown> | 
  * - Drops empty `select: {}` blocks (treated as absent).
  * - Normalizes a leaf entry to `true` when no args / select / alias remain.
  *
- * Returns `undefined` for non-object inputs (treated as "no selection") so
- * `select: {}` and `select: undefined` produce the same canonical form.
+ * Returns `undefined` for non-object inputs (treated as "no selection"), so
+ * `select: {}` and `select: undefined` share a canonical form and key. Note
+ * the boundary distinguishes them for node roots — an omitted selection is a
+ * decode error there, never executed — so key collisions between the two can
+ * only involve invocations that would not have run.
  *
  * Non-`true` scalar leaves (numbers, strings, `false`, `null`) are coerced
  * to `true` — invalid selection shapes are caught earlier by the gateway's

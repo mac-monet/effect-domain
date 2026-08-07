@@ -75,6 +75,12 @@ export function walkRoot<R>(
 ): Effect.Effect<unknown, unknown, R> {
   const plan = ctx.registry.rootPlanFor(ast);
 
+  // Selection presence is checked before the null early-return so a nullable
+  // node root cannot slip past the explicit-selection invariant.
+  if (selection === undefined && plan._tag !== "OpaqueRoot") {
+    return Effect.die(new Error("Walker: selection is required for node roots"));
+  }
+
   if (value == null) {
     return plan.nullable
       ? Effect.succeed(null)

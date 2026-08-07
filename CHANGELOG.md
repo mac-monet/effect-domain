@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Breaking
+
+- **Omitted `select` on node roots is now an error.** Previously an omitted
+  selection on an object- or array-of-nodes root executed as the empty
+  projection and returned `{}`. Dispatch boundaries now reject it with
+  `SelectionParseError`, and the in-process walker treats it as a defect.
+  Selections are always explicit: there is no implicit full selection, so a
+  response can never grow or leak fields a consumer did not ask for. Scalar
+  roots are unchanged — they take no selection and return the value directly.
+
 ## 0.4.0
 
 The client becomes swappable end to end: one typed surface, three ways to

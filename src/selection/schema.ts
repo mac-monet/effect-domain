@@ -7,7 +7,6 @@ import {
   optionalCodec,
   structCodec,
   suspendCodec,
-  undefinedCodec,
   unionCodec,
   unsafeCoerceCodec,
 } from "../schema/codec.ts";
@@ -207,7 +206,10 @@ function strictRecord(
   const validated = Schema.Unknown.pipe(
     Schema.refine(
       (v): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v),
-      { message: "Expected an object" },
+      {
+        message:
+          "Expected a selection object (selections are always explicit; there is no implicit full selection)",
+      },
     ),
     Schema.check(
       Schema.makeFilter((v: Record<string, unknown>) => {
@@ -334,10 +336,6 @@ export function nodeToSelectionSchema(registry: NodeRegistry, ast: SchemaAST.AST
   return selectionCodec(nodeToSelectionSchemaInternal(registry, ast));
 }
 
-function allowOmittedSelection(schema: DynamicCodec): DynamicCodec {
-  return unionCodec([schema, undefinedCodec]);
-}
-
 function noSelectionSchema(reason: OpaqueRootReason | undefined): DynamicCodec {
   const suffix = reason ? `: ${reason}` : "";
   return unsafeCoerceCodec(
@@ -363,10 +361,13 @@ export function rootToSelectionSchema(
 function rootToSelectionSchemaInternal(registry: NodeRegistry, ast: SchemaAST.AST): DynamicCodec {
   const plan = registry.rootPlanFor(ast);
   switch (plan._tag) {
+    // Node roots require an explicit selection — there is no implicit
+    // "select everything", so an omitted select is a decode error rather
+    // than an empty projection.
     case "ObjectRoot":
-      return allowOmittedSelection(nodeToSelectionSchemaInternal(registry, plan.schemaTarget));
+      return nodeToSelectionSchemaInternal(registry, plan.schemaTarget);
     case "ArrayRoot":
-      return allowOmittedSelection(nodeToSelectionSchemaInternal(registry, plan.selectionTarget));
+      return nodeToSelectionSchemaInternal(registry, plan.selectionTarget);
     case "OpaqueRoot":
       return noSelectionSchema(plan.reason);
   }
@@ -379,6 +380,7 @@ function selectionCodec(codec: DynamicCodec): SelectionCodec {
 }
 
 function rootSelectionCodec(codec: DynamicCodec): RootSelectionCodec {
-  // Public boundary: root selections additionally allow omitted selection.
+  // Public boundary: scalar (opaque) roots allow omitted selection; node
+  // roots require one.
   return codec as unknown as RootSelectionCodec;
 }
