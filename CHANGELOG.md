@@ -60,6 +60,18 @@ env2])` returns the per-envelope `Result`s in entry order — one entry's
 
 ### Breaking
 
+- **`Ast.unwrapType` removed — `Ast.unwrapSuspend` is the canonical AST
+  unwrapper.** Effect v4's AST is type-primary: the raw AST already carries
+  type-side structure (`Schema.NumberFromString.ast._tag === "Number"`), so
+  suspend-unwrapping is the only canonicalization adapters need. Internally
+  the raw AST is now the canonical identity domain everywhere — traversals,
+  cache keys, and visited-sets key on the user's own schema objects, whose
+  identity is stable by construction, replacing the `toType` fixpoint memo
+  (whose correctness depended on undocumented upstream memoization behavior).
+  `SchemaAST.toType` remains only at codec-synthesis boundaries. Pathological
+  suspend chains (a thunk minting a fresh Suspend per call) now throw a
+  descriptive error instead of looping.
+
 - **`inspect()` splits operations and subscriptions.** `inspect().operations`
   now contains only request/response operations; streaming operations move to
   the new `inspect().subscriptions` array. The redundant `stream` flag is
