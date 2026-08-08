@@ -23,7 +23,8 @@ const TRUE_LITERAL = unsafeCoerceCodec(Schema.Literal(true));
 // registry, but every registry-derived answer they consume (fieldDefsFor,
 // sentinels, rootPlanFor) must be a pure function of the AST — otherwise a
 // codec built through one graph's registry would be wrong for another graph
-// sharing the same AST. Only name-keyed lookups are
+// sharing the same AST. Pinned by tests/cross-graph-cache.test.ts (identity
+// assertions across two domains sharing a node). Only name-keyed lookups are
 // per-graph (see graph/runtime.ts). The per-field cache nests
 // fieldTypeAst → fieldName → stored args decoder.
 const nodeSchemaCache = new WeakMap<SchemaAST.AST, DynamicCodec>();

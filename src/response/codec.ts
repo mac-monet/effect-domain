@@ -27,7 +27,8 @@ import {
 
 // Response codecs derive purely from AST identity plus the canonicalized
 // selection, so caches are module-global WeakMaps shared across graphs and
-// GC'd with their ASTs. The inner per-AST map is keyed by canonical selection
+// GC'd with their ASTs (cross-graph sharing pinned by
+// tests/cross-graph-cache.test.ts). The inner per-AST map is keyed by canonical selection
 // JSON and unbounded — adapters synthesizing schemas for user-controlled
 // selections own that lifecycle (see responseSchema docs).
 const nodeResponseCache = new WeakMap<SchemaAST.AST, Map<string, DynamicCodec>>();
