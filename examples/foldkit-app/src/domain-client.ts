@@ -24,7 +24,13 @@ export const AppClientHttp = Layer.succeed(AppClient)(httpClient);
 // the Foldkit side needs (Message payloads, AsyncData, Flags). Schema and
 // fetch cannot drift — both are projections of the selection.
 export const summarySelect = { id: true, fullName: true } as const;
-export const detailSelect = {
+
+// Two selections for the same operation: the detail page picks one at runtime,
+// so what goes over the wire is data the app chooses, not a shape baked into
+// the call site. Each has its own derived Schema, so a runtime choice of
+// selection still lands in a statically typed Model.
+export const compactDetailSelect = { id: true, fullName: true } as const;
+export const expandedDetailSelect = {
   id: true,
   fullName: true,
   greeting: { args: { salutation: "Hello" } },
@@ -34,8 +40,13 @@ export const detailSelect = {
 export const UserSummary = domain.responseSchema("createUser", summarySelect);
 export type UserSummary = typeof UserSummary.Type;
 
-export const UserDetail = domain.responseSchema("getUser", detailSelect);
-export type UserDetail = typeof UserDetail.Type;
+export const UserCompact = domain.responseSchema("getUser", compactDetailSelect);
+export type UserCompact = typeof UserCompact.Type;
+
+export const UserExpanded = domain.responseSchema("getUser", expandedDetailSelect);
+export type UserExpanded = typeof UserExpanded.Type;
+
+export type DetailLevel = "compact" | "expanded";
 
 // One UI-facing effect per screen need: each picks its own selection, so a
 // screen fetches exactly the fields it renders. All of them read the client
@@ -45,10 +56,14 @@ export const listUsers = Effect.gen(function* () {
   return yield* client.execute({ name: "listUsers", select: summarySelect });
 });
 
-export const getUser = (id: string) =>
+// Two branches, one literal selection each: the result type is the union of
+// the two selection results, so callers keep exact field-level typing.
+export const getUser = (id: string, level: DetailLevel) =>
   Effect.gen(function* () {
     const client = yield* AppClient;
-    return yield* client.execute({ name: "getUser", args: { id }, select: detailSelect });
+    return level === "compact"
+      ? yield* client.execute({ name: "getUser", args: { id }, select: compactDetailSelect })
+      : yield* client.execute({ name: "getUser", args: { id }, select: expandedDetailSelect });
   });
 
 export const createUser = (firstName: string, lastName: string) =>

@@ -8,7 +8,8 @@ import { Url, toString as urlToString } from "foldkit/url";
 
 import {
   AppClient,
-  UserDetail,
+  UserCompact,
+  UserExpanded,
   UserSummary,
   createUser,
   getUser,
@@ -18,6 +19,13 @@ import { AppRoute, homeRouter, urlToAppRoute, userRouter } from "./route";
 
 // MODEL
 
+// The detail slot holds whichever projection the last fetch asked for. The
+// union is closed, so the view still matches on statically known fields.
+// Expanded goes first: union decoding takes the first member that matches,
+// and the compact member would otherwise strip the extra fields.
+const UserDetail = S.Union([UserExpanded, UserCompact]);
+const DetailLevel = S.Literals(["compact", "expanded"]);
+
 const UsersAsyncData = AsyncData.Schema(S.Array(UserSummary), S.String);
 const UserAsyncData = AsyncData.Schema(UserDetail, S.String);
 
@@ -25,6 +33,7 @@ export const Model = S.Struct({
   route: AppRoute,
   users: UsersAsyncData.schema,
   user: UserAsyncData.schema,
+  detailLevel: DetailLevel,
   firstNameInput: S.String,
   lastNameInput: S.String,
 });
@@ -38,6 +47,7 @@ export const CompletedNavigate = m("CompletedNavigate");
 export const SucceededLoadUsers = m("SucceededLoadUsers", { users: S.Array(UserSummary) });
 export const FailedLoadUsers = m("FailedLoadUsers", { error: S.String });
 export const SucceededLoadUser = m("SucceededLoadUser", { user: UserDetail });
+export const ToggledDetail = m("ToggledDetail");
 export const FailedLoadUser = m("FailedLoadUser", { error: S.String });
 export const UpdatedFirstNameInput = m("UpdatedFirstNameInput", { value: S.String });
 export const UpdatedLastNameInput = m("UpdatedLastNameInput", { value: S.String });
@@ -53,6 +63,7 @@ export const Message = S.Union([
   FailedLoadUsers,
   SucceededLoadUser,
   FailedLoadUser,
+  ToggledDetail,
   UpdatedFirstNameInput,
   UpdatedLastNameInput,
   SubmittedCreateForm,
@@ -74,11 +85,11 @@ const LoadUsers = Command.define("LoadUsers", {
   ),
 });
 
-const LoadUser = Command.define("LoadUser", {
-  args: { id: S.String },
+export const LoadUser = Command.define("LoadUser", {
+  args: { id: S.String, level: DetailLevel },
   messages: [SucceededLoadUser, FailedLoadUser],
-  execute: ({ id }) =>
-    getUser(id).pipe(
+  execute: ({ id, level }) =>
+    getUser(id, level).pipe(
       Effect.map((user) => SucceededLoadUser({ user })),
       // UserNotFound arrives as a class instance decoded off the wire — the
       // declared operation error survives the transport with its message.
@@ -112,11 +123,12 @@ const LoadExternal = Command.define("LoadExternal", {
 // run ahead of time is the same one the client runs on navigation.
 const dataForRoute = (
   route: typeof AppRoute.Type,
+  level: typeof DetailLevel.Type,
 ): ReadonlyArray<Command.Command<Message, never, AppClient>> =>
   M.value(route).pipe(
     M.tagsExhaustive({
       Home: () => [LoadUsers()],
-      User: ({ id }) => [LoadUser({ id })],
+      User: ({ id }) => [LoadUser({ id, level })],
       NotFound: () => [],
     }),
   );
@@ -138,10 +150,11 @@ export const init: Runtime.RoutingApplicationInit<Model, Message, void, AppClien
     route,
     users: UsersAsyncData.Idle(),
     user: UserAsyncData.Idle(),
+    detailLevel: "compact",
     firstNameInput: "",
     lastNameInput: "",
   };
-  return [modelForRoute(model, route), dataForRoute(route)];
+  return [modelForRoute(model, route), dataForRoute(route, model.detailLevel)];
 };
 
 // UPDATE
@@ -164,7 +177,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
 
       ChangedUrl: ({ url }) => {
         const route = urlToAppRoute(url);
-        return [modelForRoute(model, route), dataForRoute(route)];
+        return [modelForRoute(model, route), dataForRoute(route, model.detailLevel)];
       },
 
       CompletedNavigate: () => [model, []],
@@ -185,6 +198,23 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         evo(model, { user: () => UserAsyncData.Failure({ error }) }),
         [],
       ],
+
+      // The toggle is a refetch: a different selection goes over the wire.
+      ToggledDetail: () => {
+        const detailLevel = model.detailLevel === "compact" ? "expanded" : "compact";
+        const next = evo(model, {
+          detailLevel: () => detailLevel,
+          user: () => UserAsyncData.Loading(),
+        });
+        return M.value(model.route).pipe(
+          withUpdateReturn,
+          M.tagsExhaustive({
+            User: ({ id }) => [next, [LoadUser({ id, level: detailLevel })]],
+            Home: () => [model, []],
+            NotFound: () => [model, []],
+          }),
+        );
+      },
 
       UpdatedFirstNameInput: ({ value }) => [evo(model, { firstNameInput: () => value }), []],
       UpdatedLastNameInput: ({ value }) => [evo(model, { lastNameInput: () => value }), []],
@@ -263,15 +293,28 @@ const homeView = (model: Model, h: HtmlBuilder<Message>): Html =>
   );
 
 const userView = (model: Model, h: HtmlBuilder<Message>): Html =>
-  asyncDataView(model.user, h, (user) =>
-    h.div(
-      [h.Class("user-card")],
-      [
-        h.h2([], [user.greeting]),
-        h.p([], [user.profile.bio]),
-        h.p([h.Class("location")], [user.profile.location]),
-      ],
-    ),
+  h.div(
+    [],
+    [
+      h.button(
+        [h.OnClick(ToggledDetail())],
+        [model.detailLevel === "compact" ? "Show details" : "Hide details"],
+      ),
+      asyncDataView(model.user, h, (user) =>
+        h.div(
+          [h.Class("user-card")],
+          // The union is closed, so a presence check narrows it: the compact
+          // branch cannot reach for fields its selection never asked for.
+          "greeting" in user
+            ? [
+                h.h2([], [user.greeting]),
+                h.p([], [user.profile.bio]),
+                h.p([h.Class("location")], [user.profile.location]),
+              ]
+            : [h.h2([], [user.fullName])],
+        ),
+      ),
+    ],
   );
 
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
