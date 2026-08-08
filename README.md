@@ -2,31 +2,31 @@
 
 effect-domain is a domain action graph for Effect applications.
 
-Define resources, computed fields, actions, subscriptions, selections, and runtime schemas once with Effect Schema. Then expose or execute the same model through REST, RPC, GraphQL adapters, sync engines, workflows, jobs, or direct Effect services.
+Define your resources, computed fields, actions, subscriptions, selections, and runtime schemas one time with Effect Schema. Then serve the same model through REST, RPC, GraphQL adapters, sync engines, workflows, jobs, or direct Effect services.
 
-The core idea is that the domain model is primary. Transports are projections of that model. For the longer version of that argument — including two Foldkit frontends built as projections of one domain — see [docs/projections.md](docs/projections.md).
+The domain model is primary. Transports are projections of the model. For the full argument — with two Foldkit frontends built as projections of one domain — see [docs/projections.md](docs/projections.md).
 
-> **Status:** pre-release. The API is settling but not yet frozen. Install with `npm install effect-domain`; requires `effect@^4.0.0-beta.101` (Effect v4).
+> **Status:** pre-release. The API is almost stable, but it is not frozen. Install with `npm install effect-domain`. The library requires `effect@^4.0.0-beta.101` (Effect v4).
 
 ## Why
 
-Most application stacks redefine the same domain shape at every boundary:
+Most application stacks define the same domain shape again at each boundary:
 
-- REST routes define request and response DTOs.
+- REST routes define request DTOs and response DTOs.
 - GraphQL defines object types, fields, args, and resolvers.
-- RPC defines procedure payload and result schemas.
+- RPC defines payload schemas and result schemas.
 - Sync engines and workflows define invocation records and replay behavior.
 - Internal services define plain typed functions.
 
-effect-domain gives those interfaces a shared executable model:
+effect-domain gives one shared executable model to these interfaces:
 
 - `node(...)` defines a Schema-backed resource shape with computed fields.
 - `operation(...)` and `subscription(...)` define named actions.
 - `field(...)` defines computed or batched fields.
 - `Domain.make(...)` creates an executable domain.
-- `domain.bind(...)` exposes fixed, typed service methods.
-- `domain.dispatch(...)` exposes a validated dynamic invocation boundary.
-- `domain.argsSchema(...)`, `domain.selectionSchema(...)`, and `domain.responseSchema(...)` let adapters derive runtime schemas from the domain.
+- `domain.bind(...)` gives fixed, typed service methods.
+- `domain.dispatch(...)` gives a validated dynamic invocation boundary.
+- `domain.argsSchema(...)`, `domain.selectionSchema(...)`, and `domain.responseSchema(...)` derive runtime schemas from the domain for adapters.
 
 ## Example
 
@@ -65,17 +65,16 @@ const users = domain.bind({
 const result = users.getUser({ id: "1" });
 ```
 
-The same `getUser` action can back:
+The same `getUser` action can supply:
 
-- a fixed REST endpoint with `domain.bind(...)`,
-- an RPC procedure using `domain.argsSchema(...)` and `domain.responseSchema(...)`,
-- a GraphQL field by translating GraphQL selections into graph selections,
-- a sync subscription or workflow step through `domain.dispatch(...)`.
+- a fixed REST endpoint, with `domain.bind(...)`,
+- an RPC procedure, with `domain.argsSchema(...)` and `domain.responseSchema(...)`,
+- a GraphQL field, when the adapter translates GraphQL selections into graph selections,
+- a sync subscription or a workflow step, through `domain.dispatch(...)`.
 
 ## Dynamic HTTP Gateway
 
-`domain.dispatch(...)` gives a GraphQL-like selection model over plain JSON
-without adopting the GraphQL language or execution engine.
+`domain.dispatch(...)` gives a GraphQL-like selection model over plain JSON. You do not adopt the GraphQL language or the GraphQL engine.
 
 ```json
 POST /getUser
@@ -89,8 +88,7 @@ POST /getUser
 }
 ```
 
-For simple gateways, `domain.dispatch(...)` validates `args` and `select`
-against the graph and immediately runs the operation:
+For simple gateways, `domain.dispatch(...)` validates `args` and `select` against the graph. Then it runs the operation immediately:
 
 ```ts
 const result = domain.dispatch({
@@ -100,8 +98,7 @@ const result = domain.dispatch({
 });
 ```
 
-Production gateways that need auth, selection limits, caching, rate limits, or
-audit policy before resolvers run should use the two-stage boundary:
+Production gateways frequently apply policy before the resolvers run: auth, selection limits, caches, rate limits, or audit rules. For these, use the two-stage boundary:
 
 ```ts
 const program = Effect.gen(function* () {
@@ -120,17 +117,11 @@ const program = Effect.gen(function* () {
 });
 ```
 
-If the entire invocation record comes from untrusted data, decode it first with
-`Domain.decodeDispatchRequest(...)` before calling `prepareDispatch`.
+When the full invocation record comes from untrusted data, decode it first with `Domain.decodeDispatchRequest(...)`. Then call `prepareDispatch`.
 
 ## Wire Adapters
 
-For transports that serialize responses, `domain.handleDispatch(...)` is the
-complete server pipeline: validate the envelope, execute, and encode the
-dispatch Result with the domain's own wire codec
-(`dispatchResultSchemaDynamic`). Every expected outcome — gateway errors and
-declared operation errors — travels inside the encoded envelope, so the
-handler's error channel is `never` and any transport can forward it as-is:
+For transports that serialize responses, `domain.handleDispatch(...)` is the complete server pipeline. It validates the envelope, runs the operation, and encodes the dispatch Result with the wire codec of the domain (`dispatchResultSchemaDynamic`). Each expected outcome — gateway errors and declared operation errors — travels inside the encoded envelope. The error channel of the handler is `never`, and each transport can forward the envelope without changes:
 
 ```ts
 // HTTP route, RPC handler, worker message — all the same line:
@@ -139,14 +130,7 @@ const handler = Effect.gen(function* () {
 });
 ```
 
-`Domain.client(...)` is the client mirror. Give it the domain and "how to
-send", and it returns a client with full `domain.execute` /
-`domain.subscribe` typing — names, args, selections, selection-dependent
-result types. Successes arrive as plain selected data trees; failures decode
-back into live error-class instances. `Domain.transportHttp(url)` is the
-canonical "how to send" (POST each envelope as JSON, fetch-backed,
-wire-level failures as `Domain.TransportError`); any `WireTransport` object
-works for other protocols:
+`Domain.client(...)` is the client mirror. Give it the domain and a transport. It returns a client with the full `domain.execute` / `domain.subscribe` types: names, args, selections, and selection-dependent result types. Successes arrive as plain selected data trees. Failures decode back into live error-class instances. `Domain.transportHttp(url)` is the canonical transport: it sends each envelope as JSON with POST, and it reports wire-level failures as `Domain.TransportError`. You can supply a different `WireTransport` object for other protocols:
 
 ```ts
 const client = Domain.client(domain, Domain.transportHttp("/rpc"));
@@ -167,35 +151,21 @@ const program = Effect.gen(function* () {
 });
 ```
 
-`Domain.client(domain)` — no transport — is the in-process client: the same
-typed surface glued to `handleDispatch` / `handleSubscription` on the same
-instance, so a server entry (SSR, tests, background jobs) runs the exact
-calls the browser runs, wire codec round-trip included, with no wire.
+`Domain.client(domain)` with no transport is the in-process client. It is the same typed surface, connected to `handleDispatch` / `handleSubscription` on the same instance. A server entry (SSR, tests, background jobs) runs the same calls that the browser runs, with the wire codec round-trip, but with no wire.
 
-Serializing failures requires each fallible operation — and each fallible
-computed field — to declare an `error` schema (`operation({ error:
-UserNotFound, ... })`, `field({ error: ..., ... })`); `Domain.client` enforces
-this at compile time, naming any operation that is missing one. A field's
-typed failure fails the whole operation, so it arrives as that operation's
-`OperationError` cause.
+To serialize failures, each fallible operation — and each fallible computed field — must declare an `error` schema (`operation({ error: UserNotFound, ... })`, `field({ error: ..., ... })`). `Domain.client` makes sure of this at compile time, and it names each operation that does not have one. A typed field failure causes the full operation to fail, so it arrives as the `OperationError` cause of that operation.
 
-The dispatch ladder, then, is: `handleDispatch` for simple wire transports,
-`prepareDispatch` when policy must run between validation and execution,
-`dispatch` when nothing crosses a wire and live `Result` values are wanted.
-`dispatch` and `handleDispatch` also accept an array of envelopes and return
-per-envelope outcomes in order — one entry's failure stays inside its own
-Result or encoded envelope while siblings succeed — so a batch wire endpoint
-is `Array.isArray(body)` away from a single-envelope one.
-See `examples/rpc-dispatch.ts` and `examples/http-dispatch.ts` for both ends
-of the wire in ~50 lines each.
+The dispatch ladder:
 
-`domain.responseSchema(...)` is intended for fixed or already-validated
-selections, such as RPC route declarations and typed clients. Dynamic gateways
-should avoid synthesizing response schemas for arbitrary user-controlled
-selections unless they bound or reuse the selection set.
+- Use `handleDispatch` for simple wire transports.
+- Use `prepareDispatch` when policy must run between validation and execution.
+- Use `dispatch` when nothing crosses a wire and you want live `Result` values.
 
-The derived schemas are ordinary Effect Schemas, so JSON Schema export for
-non-TypeScript consumers is one call — no OpenAPI pipeline required:
+`dispatch` and `handleDispatch` also accept an array of envelopes. They return one outcome for each envelope, in order. A failure in one entry stays inside its own Result or encoded envelope, and the other entries succeed. A batch wire endpoint is one `Array.isArray(body)` check away from a single-envelope endpoint. See `examples/rpc-dispatch.ts` and `examples/http-dispatch.ts` for the two ends of the wire, in approximately 50 lines each.
+
+`domain.responseSchema(...)` is for fixed or validated selections, for example RPC route declarations and typed clients. Dynamic gateways must not make response schemas for arbitrary user-controlled selections, unless they limit or reuse the selection set.
+
+The derived schemas are standard Effect Schemas. JSON Schema export for non-TypeScript consumers is one call. No OpenAPI pipeline is necessary:
 
 ```ts
 import { Schema } from "effect";
@@ -207,36 +177,28 @@ Schema.toJsonSchemaDocument(domain.responseSchema("getUser", { id: true, fullNam
 // { type: "object", properties: { id: ..., fullName: ... }, ... }
 ```
 
-Invocation keys default to compact 8-byte / 16-hex-character SHA-256 prefixes.
-Use a longer key for durable or global idempotency stores:
+Invocation keys default to compact 8-byte / 16-hex-character SHA-256 prefixes. Use a longer key for durable or global idempotency stores:
 
 ```ts
 const key = domain.invocationKey(invocation, { bytes: 16 });
 ```
 
-This is not a replacement for GraphQL's ecosystem, parser, fragments,
-introspection, or null-bubbling semantics. It is a smaller primitive for systems
-where you control the client and server and want selected responses over
-ordinary HTTP.
+This is not a replacement for the GraphQL ecosystem, parser, fragments, introspection, or null-bubbling semantics. It is a smaller primitive for systems where you control the client and the server, and where you want selected responses over standard HTTP.
 
 ## Node Registry, Identity, and Topology
 
-`Domain.make` reifies the domain model once into a node registry: every
-`node()` reachable from the operations, its fields, sentinels, and the
-reference edges between nodes. Two consumer-facing views are derived from it:
+`Domain.make` reifies the domain model one time into a node registry: each `node()` reachable from the operations, its fields, its sentinels, and the reference edges between nodes. Two consumer-facing views come from the registry:
 
-- `domain.inspect()` — plain-data snapshot of operations and nodes.
+- `domain.inspect()` — a plain-data snapshot of operations, subscriptions, and nodes.
 - `domain.topology()` — the domain graph as a core `effect/Graph` value
-  (`DirectedGraph<NodeInfo, FieldEdge>`), composable with the core Graph module's
-  traversal algorithms, plus `toMermaid()` / `toGraphViz()` diagram export.
+  (`DirectedGraph<NodeInfo, FieldEdge>`). It composes with the traversal algorithms of the core Graph module, and it has `toMermaid()` / `toGraphViz()` diagram export.
 
 ```ts
 const topology = domain.topology();
 console.log(topology.toMermaid()); // flowchart of nodes and field edges
 ```
 
-Nodes can declare a canonical entity key, the foundation for caches and
-sync-engine invalidation:
+A node can declare a canonical entity key. This key is the foundation for caches and sync-engine invalidation:
 
 ```ts
 const User = node("User", UserSchema, fields, { identity: "id" });
@@ -246,9 +208,7 @@ const Feed = node("Feed", FeedSchema, {}, { identity: (feed) => `feed:${feed.id}
 
 ## Read Sets
 
-Pass `{ reads: true }` as `execute`'s options and the result arrives in an `Execution`
-envelope that additionally reports the deduplicated `(node, key)` pairs of
-every identified entity the walk touched:
+Pass `{ reads: true }` in the options of `execute`. The result then arrives in an `Execution` envelope, which also reports the deduplicated `(node, key)` pairs of each identified entity that the walk touched:
 
 ```ts
 const { result, reads } =
@@ -264,22 +224,16 @@ const { result, reads } =
 // reads: [{ node: "Feed", key: "feed:f1" }, { node: "Post", key: "p1" }, ...]
 ```
 
-Only nodes declaring both an identifier and an `identity` participate. Two
-sync-engine uses fall out of one primitive:
+Only nodes that declare an identifier and an `identity` participate. One primitive gives two sync-engine uses:
 
-- **Query dependencies** — a subscription's read set is the exact set of
-  entities whose changes should invalidate it.
-- **Mutation write-sets** — run a mutation with `reads: true` and the
-  entities present in its response are the touched keys, with no separate
-  declaration (mutations should return what they changed).
+- **Query dependencies** — the read set of a subscription is the exact set of entities whose changes must invalidate it.
+- **Mutation write-sets** — run a mutation with `reads: true`. The entities in its response are the touched keys, with no separate declaration (a mutation must return what it changed).
 
 ## N+1 and Request Batching
 
-effect-domain does not include a query planner. It uses Effect's request batching
-for relation-like fields.
+effect-domain does not include a query planner. It uses the request batching from Effect for relation-like fields.
 
-A field with `key` is resolved through `Effect.request`, so many selected fields
-with the same resolver can be batched by Effect:
+A field with `key` resolves through `Effect.request`, so Effect can batch many selected fields that have the same resolver:
 
 ```ts
 const User = node("User", UserSchema, {
@@ -291,7 +245,7 @@ const User = node("User", UserSchema, {
 });
 ```
 
-Selecting posts for a list of users still looks like per-user field resolution:
+A selection of posts for a list of users continues to look like per-user field resolution:
 
 ```ts
 domain.execute({
@@ -303,31 +257,13 @@ domain.execute({
 });
 ```
 
-Internally, the walker creates requests for each selected `posts` field and
-Effect coalesces them. For 100 users, this can become one `listUsers` operation
-plus one batched `findByAuthorIds([...100 ids])` call, not 100 individual post
-loads.
+Internally, the walker creates one request for each selected `posts` field, and Effect coalesces the requests. For 100 users, this can become one `listUsers` operation plus one batched `findByAuthorIds([...100 ids])` call, not 100 individual post loads.
 
-Batching coalesces by the resolve function's identity within one execution
-context, and each batch call receives distinct keys. Two fields that share
-one resolve function — `Post.author` and `Comment.author` both loading
-users — share one request family, so a walk touching both still makes a
-single batched call with no duplicate keys. Sharing the function is the
-whole declaration: no loader objects to construct or thread through context.
-Inline closures are distinct functions and batch separately. Concurrent
-executions with different provided services never share a batch — coalescing
-is scoped to the built context, so one run's services can never answer
-another run's keys.
+Batching coalesces by the identity of the resolve function, inside one execution context. Each batch call receives distinct keys. Two fields that share one resolve function — `Post.author` and `Comment.author` both load users — share one request family. A walk that touches the two fields makes a single batched call with no duplicate keys. The shared function is the full declaration: there are no loader objects to construct or to thread through context. Inline closures are different functions, and they batch separately. Concurrent executions with different provided services never share a batch — coalescing is scoped to the built context, so the services of one run can never answer the keys of a different run.
 
-The batching primitive is backend-agnostic. A resolver can batch through SQL,
-a KV store, a cache, another HTTP service, or an in-memory map. effect-domain
-only describes when a selected field should be resolved and how to derive its
-batch key.
+The batching primitive is backend-agnostic. A resolver can batch through SQL, a KV store, a cache, a different HTTP service, or an in-memory map. effect-domain only specifies when a selected field must resolve and how to derive its batch key.
 
-Batching also crosses operations. `execute` accepts an array of
-dispatch-shaped entries and returns a tuple typed per entry; entries run
-concurrently in one fiber tree, so batched fields coalesce **across**
-entries:
+Batching also crosses operations. `execute` accepts an array of dispatch-shaped entries and returns a tuple with a type for each entry. The entries run concurrently in one fiber tree, so batched fields coalesce **across** entries:
 
 ```ts
 const [users, user] =
@@ -341,7 +277,7 @@ const [users, user] =
 
 ## More
 
-- [examples/README.md](./examples/README.md) shows one shared domain graph exposed through HTTP, RPC, streaming, and sync-engine shapes.
+- [examples/README.md](./examples/README.md) shows one shared domain graph served through HTTP, RPC, streaming, and sync-engine shapes.
 - [EFFECT_DOMAIN.md](./EFFECT_DOMAIN.md) contains longer design notes.
 
 ## Development
