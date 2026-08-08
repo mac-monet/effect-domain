@@ -1,4 +1,4 @@
-import { normalizeEntry, parseSelection, type Selection } from "./syntax.ts";
+import { parseSelection, type Selection } from "./syntax.ts";
 
 /**
  * One selected field in an analyzed selection: its output path from the
@@ -49,14 +49,12 @@ function analyze(
       outputKey: entry.outputKey,
     });
 
-    const raw = selection[entry.fieldName];
-    for (const item of normalizeEntry(raw!)) {
-      if ((item.alias ?? entry.fieldName) !== entry.outputKey) continue;
-      const child = analyze(item.select, path);
-      maxChildDepth = Math.max(maxChildDepth, child.depth);
-      fieldCount += child.fieldCount;
-      fields.push(...child.fields);
-    }
+    // parseSelection yields one entry per normalized item (duplicate output
+    // keys throw before we get here), so entry.select IS the child block.
+    const child = analyze(entry.select, path);
+    maxChildDepth = Math.max(maxChildDepth, child.depth);
+    fieldCount += child.fieldCount;
+    fields.push(...child.fields);
   }
 
   return {

@@ -1,7 +1,7 @@
 import { Effect, Schema, SchemaAST } from "effect";
 import { BatchFieldRequest, batchResolverFor } from "./define.ts";
 import type { NodeRegistry } from "./registry.ts";
-import { isNullable, isRecord, unwrapType } from "./schema/ast.ts";
+import { isNullable, isRecord, unwrapSuspend } from "./schema/ast.ts";
 import { concreteUnionMember } from "./schema/sentinels.ts";
 import { planRuntimeNode, planSelectedNode, type SelectedFieldPlan } from "./selection/plan.ts";
 import { DuplicateOutputKey, type Selection, UndefinedSelectionEntry } from "./selection/syntax.ts";
@@ -118,7 +118,7 @@ export function walkNode<R>(
   selection: Selection,
   ctx: WalkContext,
 ): Effect.Effect<Record<string, unknown>, unknown, R> {
-  const typeAst = unwrapType(ast);
+  const typeAst = unwrapSuspend(ast);
 
   if (SchemaAST.isUnion(typeAst)) {
     const member = concreteUnionMember(obj, typeAst);
@@ -188,7 +188,7 @@ function concreteObjectMemberAst(
   value: Record<string, unknown>,
   ast: SchemaAST.AST,
 ): SchemaAST.AST {
-  const typeAst = unwrapType(ast);
+  const typeAst = unwrapSuspend(ast);
   if (!SchemaAST.isUnion(typeAst)) return typeAst;
   const member = concreteUnionMember(value, typeAst);
   return member ? concreteObjectMemberAst(value, member) : typeAst;
@@ -286,7 +286,7 @@ function resolveValue<R>(
     return Effect.succeed(stayUndefined ? undefined : null);
   }
 
-  const typeAst = ast ? unwrapType(ast) : undefined;
+  const typeAst = ast ? unwrapSuspend(ast) : undefined;
 
   if (typeAst && SchemaAST.isArrays(typeAst) && Array.isArray(value)) {
     const itemAst = typeAst.rest[0];

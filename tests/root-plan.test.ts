@@ -2,7 +2,7 @@ import { Cause, Effect, Exit, Schema, SchemaAST } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Domain, field, node, operation } from "../src/index.ts";
 import { rootPlan } from "../src/selection/projection.ts";
-import { unwrapType } from "../src/schema/ast.ts";
+import { unwrapSuspend } from "../src/schema/ast.ts";
 import type { Selection } from "../src/index.ts";
 
 const User = node(
@@ -77,7 +77,7 @@ describe("rootPlan classification", () => {
     expect(plan._tag).toBe("ArrayRoot");
     if (plan._tag !== "ArrayRoot") return;
     expect(plan.nullable).toBe(false);
-    expect(SchemaAST.isObjects(unwrapType(plan.element))).toBe(true);
+    expect(SchemaAST.isObjects(unwrapSuspend(plan.element))).toBe(true);
     expect(SchemaAST.isObjects(plan.selectionTarget)).toBe(true);
   });
 
@@ -86,7 +86,7 @@ describe("rootPlan classification", () => {
     expect(plan._tag).toBe("ArrayRoot");
     if (plan._tag !== "ArrayRoot") return;
     expect(plan.nullable).toBe(true);
-    expect(SchemaAST.isObjects(unwrapType(plan.element))).toBe(true);
+    expect(SchemaAST.isObjects(unwrapSuspend(plan.element))).toBe(true);
   });
 
   it("classifies nullable nested array roots with the outer level unwrapped once", () => {
@@ -94,7 +94,7 @@ describe("rootPlan classification", () => {
     expect(plan._tag).toBe("ArrayRoot");
     if (plan._tag !== "ArrayRoot") return;
     expect(plan.nullable).toBe(true);
-    expect(SchemaAST.isArrays(unwrapType(plan.element))).toBe(true);
+    expect(SchemaAST.isArrays(unwrapSuspend(plan.element))).toBe(true);
     expect(SchemaAST.isObjects(plan.selectionTarget)).toBe(true);
   });
 
@@ -102,7 +102,7 @@ describe("rootPlan classification", () => {
     const plan = rootPlan(Schema.Union([Schema.Array(Cat), Schema.Array(Dog)]).ast);
     expect(plan._tag).toBe("ArrayRoot");
     if (plan._tag !== "ArrayRoot") return;
-    expect(SchemaAST.isUnion(unwrapType(plan.element))).toBe(true);
+    expect(SchemaAST.isUnion(unwrapSuspend(plan.element))).toBe(true);
   });
 
   it("classifies scalar roots as opaque", () => {

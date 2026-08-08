@@ -164,7 +164,7 @@ src/
 ├── response/
 │   └── codec.ts         # response codec derivation
 └── schema/
-    ├── ast.ts           # shared Schema AST helpers (incl. canonicalizing unwrapType)
+    ├── ast.ts           # shared Schema AST helpers (raw-primary unwrapSuspend)
     ├── sentinels.ts     # union-member sentinel extraction + candidate index
     ├── codec.ts         # isolated unsafe codec-widening helpers
     └── result.ts        # Result codec construction
@@ -261,7 +261,7 @@ Implementation notes: `type` in batched fields is the returned field schema. Use
 
 **Domain invariant violations are defects.** `execute()`'s error channel is exactly the operation's `E` (plus anything a provided layer can fail with) — the walker never adds untyped `Error`s to it. Contract violations — a resolver returning a shape that contradicts its declared type (nullish for non-nullable, non-array for array roots), an empty stream from a single-value operation (`execute()` uses `Stream.runHead`; a well-behaved operation emits exactly one item), a selection forced onto an opaque root past the type system, or in-process field args that fail their schema decode (the wire boundary validates the same raw args as a typed `SelectionParseError`, so reaching that decode failure in-process means a bug at the call site) — are `Effect.die` defects. Each is either a resolver bug or unreachable through the typed API, which is the definition of a defect in Effect's convention. `dispatch` is unaffected: its boundary errors are typed `GatewayError`s, and defects still die through it.
 
-**Introspection via `domain.inspect()`.** Returns a structured description of the graph's operations and nodes — names, types, args, computed fields, whether an operation is a stream. This is a read-only traversal of Schema AST and annotations. Useful for adapter schema generation (GraphQL types, OpenAPI specs), documentation, dev tools, and validation.
+**Introspection via `domain.inspect()`.** Returns a structured description of the graph's operations and nodes — names, types, args, computed fields — with request/response operations and streaming subscriptions in separate arrays. This is a read-only traversal of Schema AST and annotations. Useful for adapter schema generation (GraphQL types, OpenAPI specs), documentation, dev tools, and validation.
 
 **Concurrency defaults to `"unbounded"`.** Effect fibers are lightweight and the batching via `Effect.request` coalesces them at the scheduler tick. Callers who need to limit concurrency pass `concurrency: N` per call. No graph-level default — the right concurrency depends on the call site, not the graph definition.
 
@@ -269,7 +269,7 @@ Implementation notes: `type` in batched fields is the returned field schema. Use
 
 **Single reification pass; caches stay pure.** All Schema AST traversal happens once, in `buildRegistry` at `Domain.make` time. Suspend/sentinel/union hazards are concentrated there and in `schema/ast.ts`. The AST-keyed memo caches (plans, selection/response codecs, root plans) remain module-global WeakMaps — they memoize _pure functions of the AST_ and are shared across graphs that reference the same node ASTs (spread-merged graphs). The invariant that keeps this sound: every registry-derived answer consumed inside a cached builder (`fieldDefsFor`, sentinels, `rootPlanFor`) must itself be a pure function of the AST.
 
-**`unwrapType` canonicalizes (toType is not idempotent).** Effect's `SchemaAST.toType` is memoized per input but rebuilds a fresh AST when applied to its own output. Identity-keyed traversals of recursive schemas would therefore never converge. `unwrapType` maintains a canonicalizing WeakMap: raw-side suspend unwrapping consults the cache at each step, canonical ASTs map to themselves, and the one-step link `toType(canonical) → canonical` snaps rebuilt suspend wrappers back. All structural traversal must go through `unwrapType`; never re-apply `toType` to unwrapped results.
+**The raw AST is the canonical identity domain.** Effect v4's AST is type-primary: the raw AST already carries type-side structure (`Schema.NumberFromString.ast._tag === "Number"`), with encodings attached as links. `unwrapSuspend` is therefore the only canonicalization — raw ASTs have stable object identity by construction (`Schema.suspend(() => User).ast.thunk()` returns the same `User.ast` every call), so identity-keyed visited-sets and WeakMap caches converge naturally on recursive schemas. `SchemaAST.toType` is reserved for codec synthesis (`codecFromAst`), where object identity is irrelevant; never use it for traversal, classification, or cache keys.
 
 **Raw-AST discovery preserves encodings.** Registry discovery recurses along the _raw_ AST wherever its shape matches the type-side classification, because `toType` strips encodings irrecoverably and sentinels must be extracted from the encoded side (that is what runtime union matching discriminates against). The unwrapped type-side AST serves only as the canonical map key.
 

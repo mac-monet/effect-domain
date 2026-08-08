@@ -1,7 +1,7 @@
 import { Schema, SchemaAST } from "effect";
 import type { StoredFieldDef } from "../define.ts";
 import type { NodeRegistry } from "../registry.ts";
-import { unwrapType } from "../schema/ast.ts";
+import { unwrapSuspend } from "../schema/ast.ts";
 import { type ParsedFieldEntry, parseSelection, type Selection, selectionKeys } from "./syntax.ts";
 
 export interface SelectedFieldPlan<R = never> {
@@ -149,7 +149,7 @@ function lookupSelectedField<R>(
   ast: SchemaAST.AST,
   fieldName: string,
 ): Pick<SelectedFieldPlan<R>, "fieldAsts" | "fieldDef"> {
-  const typeAst = unwrapType(ast);
+  const typeAst = unwrapSuspend(ast);
 
   if (SchemaAST.isUnion(typeAst)) {
     const memberPlans = typeAst.types.map((member) =>

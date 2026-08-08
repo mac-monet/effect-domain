@@ -8,7 +8,6 @@ import {
   projectableRootDepths,
   projectableRootTarget,
   unwrapSuspend,
-  unwrapType,
   wrapAstInArrays,
 } from "../schema/ast.ts";
 
@@ -86,7 +85,7 @@ export function rootPlan(ast: SchemaAST.AST): RootPlan {
 }
 
 function buildRootPlan(ast: SchemaAST.AST): RootPlan {
-  const typeAst = unwrapType(ast);
+  const typeAst = unwrapSuspend(ast);
   const nullable = isNullable(typeAst);
 
   if (SchemaAST.isArrays(typeAst)) {
@@ -177,7 +176,7 @@ function hasMixedCollectionShape(ast: SchemaAST.AST): boolean {
 
 function hasOpaqueUnionMember(union: SchemaAST.Union): boolean {
   for (const member of union.types) {
-    const memberType = unwrapType(member);
+    const memberType = unwrapSuspend(member);
     if (isNullishAst(memberType)) continue;
     if (!projectableRootTarget(memberType)) return true;
   }

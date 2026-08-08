@@ -11,13 +11,17 @@ import type { NodeRegistry, RegisteredNode } from "./registry.ts";
  * @category models
  */
 export interface Inspection {
+  /** Request/response operations — everything a non-streaming adapter can serve. */
   readonly operations: ReadonlyArray<OperationInfo>;
+  /** Streaming operations, served via `subscribe`/`handleSubscription`. */
+  readonly subscriptions: ReadonlyArray<OperationInfo>;
   readonly nodes: ReadonlyArray<NodeInfo>;
 }
 
 /**
  * One operation: name, args AST (`null` when the operation takes none),
- * root type AST, and whether it streams.
+ * and root type AST. Whether it streams is carried by which `Inspection`
+ * array it appears in.
  *
  * @since 0.1.0
  * @category models
@@ -28,7 +32,6 @@ export interface OperationInfo {
   readonly returnType: SchemaAST.AST;
   /** Declared error schema AST, when the operation provides one. */
   readonly error: SchemaAST.AST | null;
-  readonly stream: boolean;
 }
 
 /**
@@ -71,16 +74,15 @@ export interface ComputedFieldInfo {
 }
 
 export function inspect(registry: NodeRegistry): Inspection {
+  const toInfo = (op: NodeRegistry["operations"][number]): OperationInfo => ({
+    name: op.name,
+    args: op.argsAst,
+    returnType: op.returnAst,
+    error: op.errorAst,
+  });
   return {
-    operations: registry.operations.map(
-      (op): OperationInfo => ({
-        name: op.name,
-        args: op.argsAst,
-        returnType: op.returnAst,
-        error: op.errorAst,
-        stream: op.stream,
-      }),
-    ),
+    operations: registry.operations.filter((op) => !op.stream).map(toInfo),
+    subscriptions: registry.operations.filter((op) => op.stream).map(toInfo),
     nodes: Array.from(registry.nodes.values(), buildNodeInfo),
   };
 }

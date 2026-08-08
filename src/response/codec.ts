@@ -13,7 +13,7 @@ import {
 import { canonicalizeSelection } from "../invocation-key.ts";
 import type { NodeRegistry } from "../registry.ts";
 import type { RootPlan } from "../selection/projection.ts";
-import { admitsUndefinedAst, isNullable, nonNullishRootAst, unwrapType } from "../schema/ast.ts";
+import { admitsUndefinedAst, isNullable, nonNullishRootAst, unwrapSuspend } from "../schema/ast.ts";
 import {
   planSelectedNode,
   type SelectedFieldPlan,
@@ -109,7 +109,7 @@ function rootElementToResponseSchema(
   ast: SchemaAST.AST,
   selection: Selection,
 ): DynamicCodec {
-  const typeAst = unwrapType(ast);
+  const typeAst = unwrapSuspend(ast);
   if (isNullable(typeAst)) {
     return noneOrValueCodec(
       rootElementToResponseSchema(registry, nonNullishRootAst(typeAst), selection),
@@ -193,7 +193,7 @@ function fieldSuccessSchema(
   const sub = field.entry.select;
   if (!sub) return codecFromAst(fieldAst);
 
-  const typeAst = unwrapType(fieldAst);
+  const typeAst = unwrapSuspend(fieldAst);
   if (SchemaAST.isUndefined(typeAst)) return codecFromAst(typeAst);
   if (SchemaAST.isArrays(typeAst)) {
     const inner = typeAst.rest[0];

@@ -19,7 +19,9 @@ const liveDomain = domain.provide(UserRepoLive);
 // adapter that discovers operations via inspect().
 const erased = Domain.erase(liveDomain);
 
-const operations = liveDomain.inspect().operations.filter((op) => !op.stream);
+// `inspect().operations` is already the request/response set — subscriptions
+// live in `inspect().subscriptions` and cannot be MCP tools.
+const operations = liveDomain.inspect().operations;
 
 // The domain's args schemas are ordinary Effect Schemas, so JSON Schema
 // export is one call; fold `$defs` in when the schema references any.

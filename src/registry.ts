@@ -6,7 +6,7 @@ import {
   type StoredFieldDef,
   type StoredIdentity,
 } from "./define.ts";
-import { isNullishAst, unwrapSuspend, unwrapType } from "./schema/ast.ts";
+import { isNullishAst, unwrapSuspend } from "./schema/ast.ts";
 import { collectSentinels, type Sentinel } from "./schema/sentinels.ts";
 import { rootPlan, type RootPlan } from "./selection/projection.ts";
 
@@ -20,7 +20,7 @@ import { rootPlan, type RootPlan } from "./selection/projection.ts";
 export interface NodeReference {
   readonly fieldName: string;
   readonly kind: "data" | "computed" | "batched";
-  /** Canonical type AST of the referenced node (a key into `NodeRegistry.nodes`). */
+  /** Canonical raw AST of the referenced node (a key into `NodeRegistry.nodes`). */
   readonly target: SchemaAST.AST;
   /** The target is reached through one or more array wrappers. */
   readonly viaArray: boolean;
@@ -78,13 +78,13 @@ export interface RegisteredOperation {
  * @category models
  */
 export interface NodeRegistry {
-  /** Registered nodes keyed by canonical unwrapped type AST. */
+  /** Registered nodes keyed by canonical unwrapped raw AST. */
   readonly nodes: ReadonlyMap<SchemaAST.AST, RegisteredNode>;
   readonly operations: ReadonlyArray<RegisteredOperation>;
   /**
-   * Looks up a registered node, resolving suspend/type-side aliases to the
-   * canonical AST. Returns `undefined` for unregistered ASTs (anonymous
-   * structs, scalars) — callers must degrade to raw-AST handling.
+   * Looks up a registered node, resolving Suspend wrappers to the canonical
+   * raw AST. Returns `undefined` for unregistered ASTs (anonymous structs,
+   * scalars) — callers must degrade to raw-AST handling.
    */
   readonly lookup: (ast: SchemaAST.AST) => RegisteredNode | undefined;
   /**
@@ -133,28 +133,29 @@ export function reachableFieldErrorSchemas(
     }
   }
 
-  // Seed: unwrap arrays/unions at the root until registered nodes appear.
+  // Seed: unwrap suspends and walk arrays/unions at the root until registered
+  // nodes appear. Raw ASTs have stable identity so the cycle guard converges.
   function seed(ast: SchemaAST.AST, guard: Set<SchemaAST.AST>): void {
-    const typeAst = unwrapType(ast);
-    if (guard.has(typeAst)) return;
-    guard.add(typeAst);
-    const registered = registry.lookup(typeAst);
+    const unwrapped = unwrapSuspend(ast);
+    if (guard.has(unwrapped)) return;
+    guard.add(unwrapped);
+    const registered = registry.lookup(unwrapped);
     if (registered) {
       visitNode(registered);
       return;
     }
-    if (SchemaAST.isUnion(typeAst)) {
-      for (const member of typeAst.types) seed(member, guard);
+    if (SchemaAST.isUnion(unwrapped)) {
+      for (const member of unwrapped.types) seed(member, guard);
       return;
     }
-    if (SchemaAST.isArrays(typeAst)) {
-      for (const item of typeAst.rest) seed(item, guard);
-      for (const item of typeAst.elements) seed(item, guard);
+    if (SchemaAST.isArrays(unwrapped)) {
+      for (const item of unwrapped.rest) seed(item, guard);
+      for (const item of unwrapped.elements) seed(item, guard);
       return;
     }
-    if (SchemaAST.isObjects(typeAst)) {
+    if (SchemaAST.isObjects(unwrapped)) {
       // Anonymous struct root: nodes may nest inside its properties.
-      for (const ps of typeAst.propertySignatures) seed(ps.type, guard);
+      for (const ps of unwrapped.propertySignatures) seed(ps.type, guard);
     }
   }
 
@@ -175,54 +176,49 @@ interface MutableRegisteredNode {
 export function buildRegistry(ops: Record<string, AnyOperationDef>): NodeRegistry {
   const nodes = new Map<SchemaAST.AST, MutableRegisteredNode>();
   const visited = new Set<SchemaAST.AST>();
-  // Alias memo: any AST whose unwrapType resolves to a registered node maps
-  // to that node, so lookups through Suspend/type-side wrappers are one get.
+  // Alias memo: any AST whose unwrapSuspend resolves to a registered node
+  // maps to that node, so lookups through Suspend wrappers are one get.
   const aliases = new WeakMap<SchemaAST.AST, SchemaAST.AST>();
 
   // Phase 1: discover every registered node reachable from operation roots.
-  // Recursion follows the *raw* AST wherever its shape matches the type-side
-  // classification: toType strips encodings irrecoverably, and both sentinel
-  // extraction (encoded-side discriminants) and recursion into children must
-  // see raw ASTs to preserve them. `typeAst` is only the canonical key.
+  // Recursion and keying share one domain: the raw AST. In Effect v4's
+  // type-primary model the raw AST already carries type-side structure, so
+  // unwrapSuspend is the only canonicalization needed. Sentinel extraction
+  // reads the encoded side via `toEncoded` (correct for wire discrimination).
   function discover(ast: SchemaAST.AST): void {
-    const typeAst = unwrapType(ast);
-    if (ast !== typeAst) aliases.set(ast, typeAst);
-    if (visited.has(typeAst)) return;
-    visited.add(typeAst);
+    const unwrapped = unwrapSuspend(ast);
+    if (ast !== unwrapped) aliases.set(ast, unwrapped);
+    if (visited.has(unwrapped)) return;
+    visited.add(unwrapped);
 
-    const raw = SchemaAST.isSuspend(ast) ? unwrapSuspend(ast) : ast;
-
-    if (SchemaAST.isUnion(typeAst)) {
-      const src = SchemaAST.isUnion(raw) ? raw : typeAst;
-      for (const member of src.types) discover(member);
+    if (SchemaAST.isUnion(unwrapped)) {
+      for (const member of unwrapped.types) discover(member);
       return;
     }
 
-    if (SchemaAST.isArrays(typeAst)) {
-      const src = SchemaAST.isArrays(raw) ? raw : typeAst;
-      for (const item of src.rest) discover(item);
-      for (const item of src.elements) discover(item);
+    if (SchemaAST.isArrays(unwrapped)) {
+      for (const item of unwrapped.rest) discover(item);
+      for (const item of unwrapped.elements) discover(item);
       return;
     }
 
-    if (SchemaAST.isObjects(typeAst)) {
-      const src = SchemaAST.isObjects(raw) ? raw : typeAst;
-      const fieldDefs = getFieldDefs(typeAst);
-      if (fieldDefs && !nodes.has(typeAst)) {
+    if (SchemaAST.isObjects(unwrapped)) {
+      const fieldDefs = getFieldDefs(unwrapped);
+      if (fieldDefs && !nodes.has(unwrapped)) {
         const computedNames = new Set(Object.keys(fieldDefs));
         const dataFields: Array<{ name: string; type: SchemaAST.AST }> = [];
-        for (const ps of typeAst.propertySignatures) {
+        for (const ps of unwrapped.propertySignatures) {
           if (typeof ps.name === "string" && !computedNames.has(ps.name)) {
             dataFields.push({ name: ps.name, type: ps.type });
           }
         }
-        nodes.set(typeAst, {
-          typeAst,
-          identifier: SchemaAST.resolveAt<string>("identifier")(typeAst),
-          identity: getNodeIdentity(typeAst),
+        nodes.set(unwrapped, {
+          typeAst: unwrapped,
+          identifier: SchemaAST.resolveAt<string>("identifier")(unwrapped),
+          identity: getNodeIdentity(unwrapped),
           fieldDefs,
           dataFields,
-          sentinels: collectSentinels(SchemaAST.toEncoded(src)),
+          sentinels: collectSentinels(SchemaAST.toEncoded(unwrapped)),
           references: [],
         });
         for (const def of Object.values(fieldDefs)) {
@@ -233,7 +229,7 @@ export function buildRegistry(ops: Record<string, AnyOperationDef>): NodeRegistr
           }
         }
       }
-      for (const ps of src.propertySignatures) {
+      for (const ps of unwrapped.propertySignatures) {
         discover(ps.type);
       }
     }
@@ -279,36 +275,36 @@ export function buildRegistry(ops: Record<string, AnyOperationDef>): NodeRegistr
     // both edges (e.g. `Schema.Union([Post, Schema.Array(Post)])`).
     seen: Set<string>,
   ): void {
-    const typeAst = unwrapType(ast);
-    const seenKey = `${astKey(typeAst)}|${viaArray}|${viaUnion}|${optional}`;
+    const unwrapped = unwrapSuspend(ast);
+    const seenKey = `${astKey(unwrapped)}|${viaArray}|${viaUnion}|${optional}`;
     if (seen.has(seenKey)) return;
     seen.add(seenKey);
-    if (isNullishAst(typeAst)) return;
+    if (isNullishAst(unwrapped)) return;
 
-    if (SchemaAST.isUnion(typeAst)) {
-      const hasNullish = typeAst.types.some((member) => isNullishAst(unwrapType(member)));
-      for (const member of typeAst.types) {
+    if (SchemaAST.isUnion(unwrapped)) {
+      const hasNullish = unwrapped.types.some((member) => isNullishAst(unwrapSuspend(member)));
+      for (const member of unwrapped.types) {
         collectTargets(member, viaArray, true, optional || hasNullish, out, seen);
       }
       return;
     }
 
-    if (SchemaAST.isArrays(typeAst)) {
-      for (const item of typeAst.rest) collectTargets(item, true, viaUnion, optional, out, seen);
-      for (const item of typeAst.elements) {
+    if (SchemaAST.isArrays(unwrapped)) {
+      for (const item of unwrapped.rest) collectTargets(item, true, viaUnion, optional, out, seen);
+      for (const item of unwrapped.elements) {
         collectTargets(item, true, viaUnion, optional, out, seen);
       }
       return;
     }
 
-    if (SchemaAST.isObjects(typeAst)) {
-      if (nodes.has(typeAst)) {
-        out.push({ target: typeAst, viaArray, viaUnion, optional });
+    if (SchemaAST.isObjects(unwrapped)) {
+      if (nodes.has(unwrapped)) {
+        out.push({ target: unwrapped, viaArray, viaUnion, optional });
         return;
       }
       // Anonymous struct: recurse so nodes nested inside it still produce an
       // edge (attributed to the outer field).
-      for (const ps of typeAst.propertySignatures) {
+      for (const ps of unwrapped.propertySignatures) {
         collectTargets(ps.type, viaArray, viaUnion, optional, out, seen);
       }
     }
@@ -353,9 +349,9 @@ export function buildRegistry(ops: Record<string, AnyOperationDef>): NodeRegistr
     const alias = aliases.get(ast);
     if (alias) return frozen.get(alias);
     // Unknown AST: resolve once and memoize the alias for future lookups.
-    const typeAst = unwrapType(ast);
-    aliases.set(ast, typeAst);
-    return frozen.get(typeAst);
+    const unwrapped = unwrapSuspend(ast);
+    aliases.set(ast, unwrapped);
+    return frozen.get(unwrapped);
   }
 
   return {
@@ -369,8 +365,8 @@ export function buildRegistry(ops: Record<string, AnyOperationDef>): NodeRegistr
     fieldDefsFor: (ast) => {
       const registered = lookup(ast);
       if (registered) return registered.fieldDefs as Record<string, StoredFieldDef<unknown>>;
-      const typeAst = unwrapType(ast);
-      return SchemaAST.isObjects(typeAst) ? getFieldDefs(typeAst) : undefined;
+      const unwrapped = unwrapSuspend(ast);
+      return SchemaAST.isObjects(unwrapped) ? getFieldDefs(unwrapped) : undefined;
     },
   };
 }

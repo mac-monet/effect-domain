@@ -60,6 +60,14 @@ env2])` returns the per-envelope `Result`s in entry order — one entry's
 
 ### Breaking
 
+- **`inspect()` splits operations and subscriptions.** `inspect().operations`
+  now contains only request/response operations; streaming operations move to
+  the new `inspect().subscriptions` array. The redundant `stream` flag is
+  removed from `OperationInfo` — which array an entry lives in carries that.
+  This mirrors the `operationNames()` / `subscriptionNames()` split, and
+  non-streaming adapters (MCP, HTTP tools) no longer need
+  `.filter((op) => !op.stream)`.
+
 - **Name-first `execute` / `subscribe` calls removed.**
   `execute("getUser", { args, select })` and its `subscribe` / client /
   `Erased` mirrors are gone; the envelope form

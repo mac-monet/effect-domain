@@ -163,7 +163,7 @@ export function duplicateSelectionOutputKeys(
   return duplicates;
 }
 
-export function normalizeEntry(
+function normalizeEntry(
   entry: true | FieldSelection | ReadonlyArray<true | FieldSelection>,
 ): ReadonlyArray<FieldSelection> {
   if (entry === true) return [{}];

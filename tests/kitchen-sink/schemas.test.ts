@@ -121,7 +121,8 @@ describe("kitchen sink: inspect and topology on the cyclic graph", () => {
     const ops = new Map(inspection.operations.map((op) => [op.name, op]));
     expect(ops.get("getUser")!.error).not.toBeNull();
     expect(ops.get("countUsers")!.error).toBeNull();
-    expect(ops.get("watchPosts")!.stream).toBe(true);
+    expect(ops.has("watchPosts")).toBe(false);
+    expect(inspection.subscriptions.map((op) => op.name)).toEqual(["watchPosts"]);
 
     const user = inspection.nodes.find((n) => n.identifier === "KSUser")!;
     const kinds = new Map(user.computedFields.map((c) => [c.name, c.kind]));

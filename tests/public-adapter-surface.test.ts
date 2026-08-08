@@ -23,7 +23,7 @@ describe("Ast helpers", () => {
   it("identifierOf resolves annotations through suspend/type wrappers", () => {
     const User = Schema.Struct({ id: Schema.String }).annotate({ identifier: "User" });
     expect(Ast.identifierOf(User.ast)).toBe("User");
-    expect(Ast.identifierOf(Ast.unwrapType(Schema.suspend(() => User).ast))).toBe("User");
+    expect(Ast.identifierOf(Ast.unwrapSuspend(Schema.suspend(() => User).ast))).toBe("User");
   });
 });
 

@@ -83,12 +83,12 @@ describe("Unit 8: domain.inspect()", () => {
       }),
     });
 
-    const operationNames = g
-      .inspect()
-      .operations.map((o) => o.name)
+    const inspection = g.inspect();
+    const allNames = [...inspection.operations, ...inspection.subscriptions]
+      .map((o) => o.name)
       .sort();
-    expect(operationNames).toEqual(Object.keys(g.operations).sort());
-    expect(new Set(operationNames).size).toBe(operationNames.length);
+    expect(allNames).toEqual(Object.keys(g.operations).sort());
+    expect(new Set(allNames).size).toBe(allNames.length);
   });
 
   it("lists operations with name, args, return type, stream flag", () => {
@@ -108,16 +108,15 @@ describe("Unit 8: domain.inspect()", () => {
     });
 
     const inspection = g.inspect();
-    expect(inspection.operations).toHaveLength(2);
+    expect(inspection.operations).toHaveLength(1);
+    expect(inspection.subscriptions).toHaveLength(1);
 
     const getUser = inspection.operations.find((o) => o.name === "getUser")!;
-    expect(getUser.stream).toBe(false);
     expect(getUser.args).not.toBeNull();
     expect(SchemaAST.isObjects(getUser.args!)).toBe(true);
     expect(getUser.returnType).toBe(User.ast);
 
-    const userEvents = inspection.operations.find((o) => o.name === "userEvents")!;
-    expect(userEvents.stream).toBe(true);
+    const userEvents = inspection.subscriptions.find((o) => o.name === "userEvents")!;
     expect(userEvents.args).toBeNull();
   });
 
