@@ -16,7 +16,7 @@ import type { WireTransport } from "./client.ts";
  * @since 0.4.0
  * @category errors
  */
-export class TransportError extends Schema.TaggedErrorClass<TransportError>()("TransportError", {
+export class TransportError extends Schema.TaggedError<TransportError>()("TransportError", {
   message: Schema.String,
   status: Schema.optional(Schema.Number),
 }) {}

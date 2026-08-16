@@ -111,10 +111,9 @@ export function decodeDispatchRequest(input: unknown) {
  * @since 0.1.0
  * @category errors
  */
-export class UnknownOperation extends Schema.TaggedErrorClass<UnknownOperation>()(
-  "UnknownOperation",
-  { operation: Schema.String },
-) {}
+export class UnknownOperation extends Schema.TaggedError<UnknownOperation>()("UnknownOperation", {
+  operation: Schema.String,
+}) {}
 
 /**
  * Boundary error: `args` failed to decode against the operation's args
@@ -123,7 +122,7 @@ export class UnknownOperation extends Schema.TaggedErrorClass<UnknownOperation>(
  * @since 0.1.0
  * @category errors
  */
-export class ArgsParseError extends Schema.TaggedErrorClass<ArgsParseError>()("ArgsParseError", {
+export class ArgsParseError extends Schema.TaggedError<ArgsParseError>()("ArgsParseError", {
   operation: Schema.String,
   cause: Schema.Unknown,
 }) {}
@@ -135,7 +134,7 @@ export class ArgsParseError extends Schema.TaggedErrorClass<ArgsParseError>()("A
  * @since 0.1.0
  * @category errors
  */
-export class SelectionParseError extends Schema.TaggedErrorClass<SelectionParseError>()(
+export class SelectionParseError extends Schema.TaggedError<SelectionParseError>()(
   "SelectionParseError",
   { operation: Schema.String, cause: Schema.Unknown },
 ) {}
@@ -147,7 +146,7 @@ export class SelectionParseError extends Schema.TaggedErrorClass<SelectionParseE
  * @since 0.1.0
  * @category errors
  */
-export class WrongOperationKind extends Schema.TaggedErrorClass<WrongOperationKind>()(
+export class WrongOperationKind extends Schema.TaggedError<WrongOperationKind>()(
   "WrongOperationKind",
   {
     operation: Schema.String,

@@ -23,6 +23,13 @@
   Dataloader semantics as a runtime property — no loader objects. Inline
   closures are distinct functions and batch separately, as before.
 
+### Changed
+
+- **Effect moved from beta to the 4.0 release candidate.** The peer range is
+  now `^4.0.0-rc.109`. The RC renamed `Schema.TaggedErrorClass` back to
+  `Schema.TaggedError`; the library's error classes follow it. Applications
+  on `effect@beta` must upgrade with the library.
+
 ### Fixed
 
 - **Concurrent executions could leak one run's services into another's

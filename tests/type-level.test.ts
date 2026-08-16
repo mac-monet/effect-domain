@@ -161,7 +161,7 @@ describe("Unit 7: typed selections and NodeType", () => {
 
   it("Node extractors see union variants, anonymous-struct roots, and declared field errors", () => {
     class CatSvc extends Context.Service<CatSvc, { readonly c: number }>()("CatSvc") {}
-    class DogErr extends Schema.TaggedErrorClass<DogErr>("DogErr")("DogErr", {}) {}
+    class DogErr extends Schema.TaggedError<DogErr>("DogErr")("DogErr", {}) {}
 
     const Cat = node("TLCat", Schema.Struct({ _tag: Schema.Literal("cat") }), (f) => ({
       purr: f.field({
@@ -202,7 +202,7 @@ describe("Unit 7: typed selections and NodeType", () => {
   it("field requirements and errors reach the type level through NodeMeta", () => {
     class Clock extends Context.Service<Clock, { readonly now: number }>()("Clock") {}
     class Fmt extends Context.Service<Fmt, { readonly fmt: string }>()("Fmt") {}
-    class BioMissing extends Schema.TaggedErrorClass<BioMissing>("BioMissing")("BioMissing", {}) {}
+    class BioMissing extends Schema.TaggedError<BioMissing>("BioMissing")("BioMissing", {}) {}
 
     const Profile = node("Profile", Schema.Struct({ bio: Schema.String }), (f) => ({
       formatted: f.field({

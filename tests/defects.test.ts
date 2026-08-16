@@ -71,7 +71,7 @@ describe("domain invariant violations are defects", () => {
   });
 
   it("keeps the typed error channel exactly the operation's E", () => {
-    class NotFound extends Schema.TaggedErrorClass<NotFound>()("NotFound", {}) {}
+    class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {}) {}
     const domain = Domain.make({
       get: operation({
         type: User,

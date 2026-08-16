@@ -134,7 +134,7 @@ describe("dispatchResultSchemaDynamic", () => {
 });
 
 describe("MissingErrorSchemas / DeclaredErrorType", () => {
-  class Boom extends Schema.TaggedErrorClass<Boom>()("Boom", { message: Schema.String }) {}
+  class Boom extends Schema.TaggedError<Boom>()("Boom", { message: Schema.String }) {}
 
   const undeclared = operation({
     type: Schema.String,

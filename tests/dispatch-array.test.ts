@@ -2,7 +2,7 @@ import { Effect, Result, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Domain, operation, OperationError } from "../src/index.ts";
 
-class Boom extends Schema.TaggedErrorClass<Boom>()("Boom", {
+class Boom extends Schema.TaggedError<Boom>()("Boom", {
   message: Schema.String,
 }) {}
 

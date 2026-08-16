@@ -72,7 +72,7 @@ const propertyGraph = Domain.make({
   }),
 });
 
-class DispatchBoom extends Schema.TaggedErrorClass<DispatchBoom>()("DispatchBoom", {
+class DispatchBoom extends Schema.TaggedError<DispatchBoom>()("DispatchBoom", {
   message: Schema.String,
 }) {}
 
@@ -376,7 +376,7 @@ describe("Domain.responseSchema", () => {
   });
 
   it("unions reachable field error schemas into the dispatch failure codec", () => {
-    class FieldBoom extends Schema.TaggedErrorClass<FieldBoom>()("FieldBoom", {
+    class FieldBoom extends Schema.TaggedError<FieldBoom>()("FieldBoom", {
       reason: Schema.String,
     }) {}
     const User = node("FieldErrorUser", Schema.Struct({ id: Schema.String }), (f) => ({

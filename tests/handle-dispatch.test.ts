@@ -62,7 +62,7 @@ describe("handleDispatch compile-time gates", () => {
     // @ts-expect-error reads reshapes the success value and cannot round-trip the wire codec
     const withReads = liveDomain.handleDispatch(request, { reads: true });
 
-    class Boom extends Schema.TaggedErrorClass<Boom>()("Boom", { message: Schema.String }) {}
+    class Boom extends Schema.TaggedError<Boom>()("Boom", { message: Schema.String }) {}
     const incomplete = Domain.make({
       explode: operation({
         type: Schema.String,
@@ -79,7 +79,7 @@ describe("handleDispatch compile-time gates", () => {
 
 describe("ProvidedE in dispatch-family error channels", () => {
   it("types layer acquisition failures instead of claiming never", () => {
-    class LayerBoom extends Schema.TaggedErrorClass<LayerBoom>()("LayerBoom", {}) {}
+    class LayerBoom extends Schema.TaggedError<LayerBoom>()("LayerBoom", {}) {}
     const failing = domain.provide(
       Layer.effect(UserRepo)(Effect.fail(new LayerBoom()) as Effect.Effect<never, LayerBoom>),
     );
@@ -99,7 +99,7 @@ describe("ProvidedE in dispatch-family error channels", () => {
   });
 
   it("propagates the layer failure at runtime through handleDispatch", async () => {
-    class LayerBoom extends Schema.TaggedErrorClass<LayerBoom>()("LayerBoom", {}) {}
+    class LayerBoom extends Schema.TaggedError<LayerBoom>()("LayerBoom", {}) {}
     const failing = domain.provide(
       Layer.effect(UserRepo)(Effect.fail(new LayerBoom()) as Effect.Effect<never, LayerBoom>),
     );

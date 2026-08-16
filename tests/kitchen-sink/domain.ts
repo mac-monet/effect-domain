@@ -7,17 +7,14 @@ import { Domain, node, operation, subscription } from "../../src/index.ts";
 // full operation spread (query, list, mutation-like, scalar, subscription).
 // All kitchen-sink projection suites import this domain.
 
-export class KSUserNotFound extends Schema.TaggedErrorClass<KSUserNotFound>()("KSUserNotFound", {
+export class KSUserNotFound extends Schema.TaggedError<KSUserNotFound>()("KSUserNotFound", {
   id: Schema.String,
   message: Schema.String,
 }) {}
 
-export class KSBioUnavailable extends Schema.TaggedErrorClass<KSBioUnavailable>()(
-  "KSBioUnavailable",
-  {
-    userId: Schema.String,
-  },
-) {}
+export class KSBioUnavailable extends Schema.TaggedError<KSBioUnavailable>()("KSBioUnavailable", {
+  userId: Schema.String,
+}) {}
 
 // Raw rows the repos serve. Post rows are denormalized: they already carry
 // their comments, tags, and nullable editor so data fields walk for free.

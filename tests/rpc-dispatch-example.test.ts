@@ -69,7 +69,7 @@ describe("Examples: dynamic typed RPC adapter", () => {
   });
 
   it("rejects domains with undeclared error schemas at compile time", () => {
-    class Boom extends Schema.TaggedErrorClass<Boom>()("Boom", { message: Schema.String }) {}
+    class Boom extends Schema.TaggedError<Boom>()("Boom", { message: Schema.String }) {}
     const incomplete = Domain.make({
       explode: operation({
         type: Schema.String,

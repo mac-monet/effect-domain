@@ -28,7 +28,7 @@ export class UserRepo extends Context.Service<
   }
 >()("UserRepo") {}
 
-export class UserNotFound extends Schema.TaggedErrorClass<UserNotFound>()("UserNotFound", {
+export class UserNotFound extends Schema.TaggedError<UserNotFound>()("UserNotFound", {
   id: Schema.String,
   message: Schema.String,
 }) {}
