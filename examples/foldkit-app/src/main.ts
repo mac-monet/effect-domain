@@ -6,34 +6,19 @@ import { UrlRequest, load, pushUrl } from "foldkit/navigation";
 import { evo } from "foldkit/struct";
 import { Url, toString as urlToString } from "foldkit/url";
 
-import {
-  AppClient,
-  UserCompact,
-  UserExpanded,
-  UserSummary,
-  createUser,
-  getUser,
-  listUsers,
-} from "./domain-client";
+import { Domain } from "../../../src/index.ts";
+import { AppClient, UserQuery, UserSummary, UsersQuery, createUser } from "./domain-client";
 import { AppRoute, homeRouter, urlToAppRoute, userRouter } from "./route";
 
 // MODEL
 
-// The detail slot holds whichever projection the last fetch asked for. The
-// union is closed, so the view still matches on statically known fields.
-// Expanded goes first: union decoding takes the first member that matches,
-// and the compact member would otherwise strip the extra fields.
-const UserDetail = S.Union([UserExpanded, UserCompact]);
-const DetailLevel = S.Literals(["compact", "expanded"]);
-
-const UsersAsyncData = AsyncData.Schema(S.Array(UserSummary), S.String);
-const UserAsyncData = AsyncData.Schema(UserDetail, S.String);
-
+// Both async slots come straight from the domain-generated query bundles:
+// data schema, typed error schema, and the six-state codec in one value.
 export const Model = S.Struct({
   route: AppRoute,
-  users: UsersAsyncData.schema,
-  user: UserAsyncData.schema,
-  detailLevel: DetailLevel,
+  users: UsersQuery.asyncData.schema,
+  user: UserQuery.asyncData.schema,
+  detailLevel: S.Literals(["compact", "expanded"]),
   firstNameInput: S.String,
   lastNameInput: S.String,
 });
@@ -44,11 +29,7 @@ export type Model = typeof Model.Type;
 export const ClickedLink = m("ClickedLink", { request: UrlRequest });
 export const ChangedUrl = m("ChangedUrl", { url: Url });
 export const CompletedNavigate = m("CompletedNavigate");
-export const SucceededLoadUsers = m("SucceededLoadUsers", { users: S.Array(UserSummary) });
-export const FailedLoadUsers = m("FailedLoadUsers", { error: S.String });
-export const SucceededLoadUser = m("SucceededLoadUser", { user: UserDetail });
 export const ToggledDetail = m("ToggledDetail");
-export const FailedLoadUser = m("FailedLoadUser", { error: S.String });
 export const UpdatedFirstNameInput = m("UpdatedFirstNameInput", { value: S.String });
 export const UpdatedLastNameInput = m("UpdatedLastNameInput", { value: S.String });
 export const SubmittedCreateForm = m("SubmittedCreateForm");
@@ -59,10 +40,8 @@ export const Message = S.Union([
   ClickedLink,
   ChangedUrl,
   CompletedNavigate,
-  SucceededLoadUsers,
-  FailedLoadUsers,
-  SucceededLoadUser,
-  FailedLoadUser,
+  UsersQuery.Settled,
+  UserQuery.Settled,
   ToggledDetail,
   UpdatedFirstNameInput,
   UpdatedLastNameInput,
@@ -77,26 +56,8 @@ export type Message = typeof Message.Type;
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-const LoadUsers = Command.define("LoadUsers", {
-  messages: [SucceededLoadUsers, FailedLoadUsers],
-  execute: listUsers.pipe(
-    Effect.map((users) => SucceededLoadUsers({ users })),
-    Effect.catch((error) => Effect.succeed(FailedLoadUsers({ error: describe(error) }))),
-  ),
-});
-
-export const LoadUser = Command.define("LoadUser", {
-  args: { id: S.String, level: DetailLevel },
-  messages: [SucceededLoadUser, FailedLoadUser],
-  execute: ({ id, level }) =>
-    getUser(id, level).pipe(
-      Effect.map((user) => SucceededLoadUser({ user })),
-      // UserNotFound arrives as a class instance decoded off the wire — the
-      // declared operation error survives the transport with its message.
-      Effect.catch((error) => Effect.succeed(FailedLoadUser({ error: describe(error) }))),
-    ),
-});
-
+// The create mutation stays hand-written: it navigates on success instead of
+// settling into an AsyncData slot, so the query bridge doesn't apply.
 const CreateUser = Command.define("CreateUser", {
   args: { firstName: S.String, lastName: S.String },
   messages: [SucceededCreateUser, FailedCreateUser],
@@ -123,12 +84,12 @@ const LoadExternal = Command.define("LoadExternal", {
 // run ahead of time is the same one the client runs on navigation.
 const dataForRoute = (
   route: typeof AppRoute.Type,
-  level: typeof DetailLevel.Type,
+  level: Model["detailLevel"],
 ): ReadonlyArray<Command.Command<Message, never, AppClient>> =>
   M.value(route).pipe(
     M.tagsExhaustive({
-      Home: () => [LoadUsers()],
-      User: ({ id }) => [LoadUser({ id, level })],
+      Home: () => [UsersQuery.Load({})],
+      User: ({ id }) => [UserQuery.Load({ id, level })],
       NotFound: () => [],
     }),
   );
@@ -136,8 +97,8 @@ const dataForRoute = (
 const modelForRoute = (model: Model, route: typeof AppRoute.Type): Model =>
   M.value(route).pipe(
     M.tagsExhaustive({
-      Home: () => evo(model, { route: () => route, users: () => UsersAsyncData.Loading() }),
-      User: () => evo(model, { route: () => route, user: () => UserAsyncData.Loading() }),
+      Home: () => evo(model, { route: () => route, users: () => AsyncData.Loading() }),
+      User: () => evo(model, { route: () => route, user: () => AsyncData.Loading() }),
       NotFound: () => evo(model, { route: () => route }),
     }),
   );
@@ -148,8 +109,8 @@ export const init: Runtime.RoutingApplicationInit<Model, Message, void, AppClien
   const route = urlToAppRoute(url);
   const model: Model = {
     route,
-    users: UsersAsyncData.Idle(),
-    user: UserAsyncData.Idle(),
+    users: AsyncData.Idle(),
+    user: AsyncData.Idle(),
     detailLevel: "compact",
     firstNameInput: "",
     lastNameInput: "",
@@ -182,34 +143,22 @@ export const update = (model: Model, message: Message): UpdateReturn =>
 
       CompletedNavigate: () => [model, []],
 
-      SucceededLoadUsers: ({ users }) => [
-        evo(model, { users: () => UsersAsyncData.Success({ data: users }) }),
-        [],
-      ],
-      FailedLoadUsers: ({ error }) => [
-        evo(model, { users: () => UsersAsyncData.Failure({ error }) }),
-        [],
-      ],
-      SucceededLoadUser: ({ user }) => [
-        evo(model, { user: () => UserAsyncData.Success({ data: user }) }),
-        [],
-      ],
-      FailedLoadUser: ({ error }) => [
-        evo(model, { user: () => UserAsyncData.Failure({ error }) }),
-        [],
-      ],
+      // One arm per query: settle folds the Result into the previous state,
+      // keeping the last good data on a failed refresh (Stale) for free.
+      SettledUsers: ({ result }) => [evo(model, { users: AsyncData.settle(result) }), []],
+      SettledUser: ({ result }) => [evo(model, { user: AsyncData.settle(result) }), []],
 
       // The toggle is a refetch: a different selection goes over the wire.
       ToggledDetail: () => {
         const detailLevel = model.detailLevel === "compact" ? "expanded" : "compact";
         const next = evo(model, {
           detailLevel: () => detailLevel,
-          user: () => UserAsyncData.Loading(),
+          user: () => AsyncData.Loading(),
         });
         return M.value(model.route).pipe(
           withUpdateReturn,
           M.tagsExhaustive({
-            User: ({ id }) => [next, [LoadUser({ id, level: detailLevel })]],
+            User: ({ id }) => [next, [UserQuery.Load({ id, level: detailLevel })]],
             Home: () => [model, []],
             NotFound: () => [model, []],
           }),
@@ -231,7 +180,10 @@ export const update = (model: Model, message: Message): UpdateReturn =>
 
       // Surface a create failure in the list's error slot.
       FailedCreateUser: ({ error }) => [
-        evo(model, { users: () => UsersAsyncData.Failure({ error }) }),
+        evo(model, {
+          users: () =>
+            UsersQuery.asyncData.Failure({ error: new Domain.TransportError({ message: error }) }),
+        }),
         [],
       ],
 
@@ -245,8 +197,10 @@ export const update = (model: Model, message: Message): UpdateReturn =>
 
 // VIEW
 
-const asyncDataView = <A>(
-  data: AsyncData.AsyncData<A, string>,
+// The error slot is typed now — declared domain errors and TransportError
+// both carry `message`, so the generic view renders that.
+const asyncDataView = <A, E extends { readonly message: string }>(
+  data: AsyncData.AsyncData<A, E>,
   h: HtmlBuilder<Message>,
   success: (value: A) => Html,
 ): Html =>
@@ -256,7 +210,7 @@ const asyncDataView = <A>(
       Loading: () => h.p([h.Class("status")], ["Loading…"]),
       Refreshing: ({ data: value }) => success(value),
       Stale: ({ data: value }) => success(value),
-      Failure: ({ error }) => h.p([h.Class("status error")], [error]),
+      Failure: ({ error }) => h.p([h.Class("status error")], [error.message]),
       Success: ({ data: value }) => success(value),
     }),
   );

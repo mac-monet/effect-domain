@@ -1,8 +1,10 @@
+import { Result } from "effect";
 import { Command, click, expect, given, role, scene, text } from "foldkit/scene";
 import { describe, test } from "vitest";
 
+import { UserQuery } from "./domain-client";
 import { homeModel, userModel } from "./main.fixtures";
-import { LoadUser, SucceededLoadUser, update, view } from "./main";
+import { update, view } from "./main";
 
 describe("home", () => {
   test("renders the loaded user list with detail links", () => {
@@ -32,14 +34,14 @@ describe("user detail", () => {
       expect(text("Alice Anderson")).toExist(),
       click(role("button", { name: "Show details" })),
       Command.resolve(
-        LoadUser,
-        SucceededLoadUser({
-          user: {
+        UserQuery.Load,
+        UserQuery.Settled({
+          result: Result.succeed({
             id: "1",
             fullName: "Alice Anderson",
             greeting: "Hello Alice Anderson",
             profile: { bio: "Maintains the domain gateway", location: "Taipei" },
-          },
+          }),
         }),
       ),
       expect(role("button", { name: "Hide details" })).toExist(),
