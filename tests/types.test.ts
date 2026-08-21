@@ -11,11 +11,9 @@ import {
   type SubscriptionDef,
 } from "../src/index.ts";
 
-// Soundness contract: the args slot on operation/subscription/field is
-// `Schema.Decoder<Args>` (DecodingServices = never), not `Schema.Schema<Args>`
-// (DecodingServices = unknown). A decoder that requires services would
-// silently lose its R requirement when stored on the op, then fail at runtime
-// when the gateway dispatches without provisioning the service.
+// Soundness contract: the args slot on operation/subscription/field is a
+// service-free `Schema.Codec`. Domain.client encodes it and the gateway decodes
+// it, and neither direction may silently lose a service requirement.
 //
 // Compile-time assertions use a positive-truth pattern (no `@ts-expect-error`,
 // which would suppress unrelated errors): for each slot we encode "this codec
@@ -85,8 +83,8 @@ describe("Type contract: args slot accepts plain Schema args", () => {
   });
 });
 
-describe("Type contract: argsSchema accessor returns Schema.Decoder", () => {
-  it("decodeUnknownEffect on argsSchema produces R = never", () => {
+describe("Type contract: argsSchema accessor returns a service-free JSON codec", () => {
+  it("encode and decode on argsSchema both produce R = never", () => {
     const domain = Domain.make({
       ping: operation({
         type: PlainNode,
@@ -99,12 +97,11 @@ describe("Type contract: argsSchema accessor returns Schema.Decoder", () => {
       }),
     });
 
-    const argsDecoder = domain.argsSchema("getOne");
-    const decode = Schema.decodeUnknownEffect(argsDecoder);
-    // If `argsSchema` returned Schema.Schema<Args> instead of Schema.Decoder<Args>,
-    // this Effect's R would be `unknown` and `Effect.runSync` would reject the
-    // call (its `R extends never` constraint).
+    const argsCodec = domain.argsSchema("getOne");
+    const decode = Schema.decodeUnknownEffect(argsCodec);
+    const encoded = Effect.runSync(Schema.encodeUnknownEffect(argsCodec)({ id: "x" }));
     const result = Effect.runSync(decode({ id: "x" }));
+    expect(encoded).toEqual({ id: "x" });
     expect(result).toEqual({ id: "x" });
   });
 });

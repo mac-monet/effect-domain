@@ -27,7 +27,7 @@ export interface FieldDef<Type, Parent = unknown, _E = unknown, _R = unknown, _E
 interface ComputedFieldDef<Type, Parent, E, R> {
   readonly _kind: "computed";
   readonly type: Schema.Schema<Type>;
-  readonly args?: Schema.Decoder<unknown>;
+  readonly args?: Schema.Codec<unknown, unknown, never, never>;
   readonly error?: Schema.Top;
   readonly resolve: (ctx: {
     readonly parent: Parent;
@@ -98,7 +98,7 @@ export type NodeType<
 
 /**
  * Configuration for a pure computed field: `resolve` derives a value from the
- * parent. Optional `args` declares a decoder for per-selection arguments;
+ * parent. Optional `args` declares a codec for per-selection arguments;
  * `selections` lists the immediate child field names the caller selected, for
  * data-fetch lookahead.
  *
@@ -107,7 +107,7 @@ export type NodeType<
  */
 export interface FieldConfig<Type, Parent, E, R, Args = never> {
   readonly type: Schema.Schema<Type>;
-  readonly args?: Schema.Decoder<Args>;
+  readonly args?: Schema.Codec<Args, unknown, never, never>;
   /**
    * Optional declared error schema describing the resolver's expected
    * failures — the field-level mirror of `operation({ error })`. A field's
@@ -315,7 +315,7 @@ export type StoredFieldDef<R> = StoredComputedFieldDef<R> | StoredBatchedFieldDe
 export interface StoredComputedFieldDef<R> {
   readonly _kind: "computed";
   readonly type: { readonly ast: SchemaAST.AST };
-  readonly args?: Schema.Decoder<unknown>;
+  readonly args?: Schema.Codec<unknown, unknown, never, never>;
   readonly error?: Schema.Top;
   readonly resolve: (ctx: {
     readonly parent: unknown;
@@ -467,12 +467,10 @@ export interface AnyOperationDef {
   readonly _stream: boolean;
   readonly type: { readonly ast: SchemaAST.AST };
   /**
-   * Erased Decoder. The slot is narrowed to `Schema.Decoder<unknown>` (not just
-   * `{ ast }`) so `argsSchemaFor`'s boundary cast is trivially sound — any
-   * future op constructor that lands a value in `args` must also land a
-   * Decoder, preserving `RD = never` at the gateway.
+   * Erased service-free codec. The wire client encodes through this schema and
+   * the gateway decodes through the canonical JSON codec derived from it.
    */
-  readonly args?: Schema.Decoder<unknown> | undefined;
+  readonly args?: Schema.Codec<unknown, unknown, never, never> | undefined;
   /**
    * Erased declared error schema. Narrowed to `Schema.Top` (not just
    * `{ ast }`) so `errorSchema` / `dispatchResultSchema` can hand the live
@@ -496,7 +494,7 @@ export interface OperationDefinition<
 > {
   readonly _stream: Streamed;
   readonly type: Schema.Schema<Type>;
-  readonly args?: Schema.Decoder<Args>;
+  readonly args?: Schema.Codec<Args, unknown, never, never>;
   /**
    * Declared error schema — adapter metadata, never used by the walker.
    * `ErrS` carries the declared schema's exact type so adapters recover
@@ -514,14 +512,14 @@ export interface OperationDefinition<
 
 /**
  * Configuration for a single-value operation: the root `type`, an optional
- * `args` decoder, and an Effect-returning `resolve`.
+ * `args` codec, and an Effect-returning `resolve`.
  *
  * @since 0.1.0
  * @category models
  */
 export interface OperationDef<Type, Args = undefined, E = never, R = never> {
   readonly type: Schema.Schema<Type>;
-  readonly args?: Schema.Decoder<Args>;
+  readonly args?: Schema.Codec<Args, unknown, never, never>;
   /**
    * Optional declared error schema describing the expected failures in `E`.
    * Pure adapter metadata: the walker and execute paths never touch it, but
@@ -595,7 +593,7 @@ export function operation<Type, Args = undefined, E = never, R = never>(
  */
 export interface SubscriptionDef<Type, Args = undefined, E = never, R = never> {
   readonly type: Schema.Schema<Type>;
-  readonly args?: Schema.Decoder<Args>;
+  readonly args?: Schema.Codec<Args, unknown, never, never>;
   /** Optional declared error schema; see {@link OperationDef}. */
   readonly error?: Schema.Top;
   readonly resolve: (ctx: {

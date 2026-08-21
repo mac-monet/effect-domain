@@ -2,9 +2,9 @@ import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { Domain, node, operation, subscription } from "../src/index.ts";
 
 // Soundness pattern: services live in resolvers, never in args schemas.
-// `OperationDef.args` is typed `Schema.Decoder<Args>` — DecodingServices = never —
-// so the gateway can decode args without provisioning anything beyond what
-// the transport itself needs. Authorization, lookups, and side-effecting
+// `OperationDef.args` is a service-free Schema.Codec: Domain.client encodes
+// its Type through Schema.toCodecJson and the gateway decodes the JSON side.
+// Authorization, lookups, and side-effecting
 // validation belong inside `resolve`, where the Effect channel tracks the
 // requirement (`R`). This keeps the boundary's R independent of args
 // validation and prevents silently dropped service requirements.

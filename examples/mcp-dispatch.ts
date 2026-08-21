@@ -11,7 +11,7 @@
 // selection); scalar operations take none.
 import { Effect, Layer, Schema } from "effect";
 import { McpServer, Tool, Toolkit } from "effect/unstable/ai";
-import { Domain, type WireShape } from "../src/index.ts";
+import { Domain } from "../src/index.ts";
 import { domain, UserRepoLive } from "./domain.ts";
 
 const liveDomain = domain.provide(UserRepoLive);
@@ -22,6 +22,9 @@ const erased = Domain.erase(liveDomain);
 // `inspect().operations` is already the request/response set — subscriptions
 // live in `inspect().subscriptions` and cannot be MCP tools.
 const operations = liveDomain.inspect().operations;
+type WireResult =
+  | { readonly _tag: "Success"; readonly success: unknown }
+  | { readonly _tag: "Failure"; readonly failure: unknown };
 
 // The domain's args schemas are ordinary Effect Schemas, so JSON Schema
 // export is one call; fold `$defs` in when the schema references any.
@@ -63,7 +66,7 @@ const handlers = Object.fromEntries(
         Effect.flatMap((envelope) => {
           // handleDispatch returns the encoded dispatch-Result envelope;
           // unwrap it so agents see plain results and typed failures.
-          const e = envelope as WireShape<unknown, unknown>;
+          const e = envelope as WireResult;
           return e._tag === "Success" ? Effect.succeed(e.success) : Effect.fail(e.failure);
         }),
       ),

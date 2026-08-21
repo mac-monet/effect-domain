@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Canonical Effect Schema JSON codecs across the wire.** Operation args,
+  computed-field args, selections, projected responses, declared errors, and
+  dispatch results now derive their encoded side with `Schema.toCodecJson`.
+  `Domain.client` encodes request envelopes before calling the transport, and
+  wire handlers return JSON-safe values for Effect types such as `Date`,
+  `URL`, `bigint`, `Option`, and `Result`.
+- Dispatch result schemas now use Effect's built-in
+  `Schema.Result(success, failure)` codec.
+
+### Breaking
+
+- Removed the redundant public `ResultCodec` and `WireShape` exports. Use
+  `Schema.toCodecJson(Schema.Result(success, failure))` directly.
+- Operation and computed-field `args` now require service-free
+  `Schema.Codec` values rather than decode-only `Schema.Decoder` values, so
+  clients can encode their Type values to JSON. `domain.argsSchema`,
+  `domain.selectionSchema`, `domain.responseSchema`, and dispatch-result
+  schemas expose `Schema.Json` as their encoded type.
+- `ArgsParseError.cause` and `SelectionParseError.cause` are now diagnostic
+  strings, ensuring boundary failures are JSON-safe.
+
 ## 0.5.0
 
 ### Added

@@ -176,10 +176,35 @@ export function client<
         )
       : Effect.succeed(result.success);
 
+  const knownNames = new Set<string>([...dom.operationNames(), ...dom.subscriptionNames()]);
+
+  const encodeRequest = (name: string, config: { args?: unknown; select?: unknown }) =>
+    Effect.suspend(() =>
+      knownNames.has(name)
+        ? Effect.all({
+            args: Schema.encodeUnknownEffect(dom.argsSchema(name as string & keyof Ops))(
+              config.args,
+            ),
+            select: Schema.encodeUnknownEffect(dom.selectionSchema(name as string & keyof Ops))(
+              config.select,
+            ),
+          }).pipe(Effect.map(({ args, select }) => ({ name, args, select })))
+        : Schema.encodeUnknownEffect(Schema.Json)({
+            name,
+            ...(config.args !== undefined ? { args: config.args } : {}),
+            ...(config.select !== undefined ? { select: config.select } : {}),
+          }).pipe(Effect.map((request) => request as DispatchRequest)),
+    );
+
   const executeOne = (name: string, config: { args?: unknown; select?: unknown }) =>
-    transport
-      .execute({ name, args: config.args, select: config.select })
-      .pipe(Effect.flatMap(decode(name, config.select)), Effect.flatMap(unwrap));
+    Effect.flatMap(encodeRequest(name, config), (request) =>
+      transport
+        .execute(request)
+        .pipe(
+          Effect.flatMap(decode(name, request.select === null ? undefined : request.select)),
+          Effect.flatMap(unwrap),
+        ),
+    );
 
   // The generic surface below is untyped by construction (runtime name
   // strings); the WireClient interface restores exact `domain.execute` typing.
@@ -202,11 +227,20 @@ export function client<
     subscribe: (entry: { readonly name: string; args?: unknown; select?: unknown }) => {
       const name = entry.name;
       const cfg = entry;
-      return transport
-        .subscribe({ name, args: cfg.args, select: cfg.select })
-        .pipe(
-          Stream.mapEffect((item) => decode(name, cfg.select)(item).pipe(Effect.flatMap(unwrap))),
-        );
+      return Stream.unwrap(
+        Effect.map(encodeRequest(name, cfg), (request) =>
+          transport
+            .subscribe(request)
+            .pipe(
+              Stream.mapEffect((item) =>
+                decode(
+                  name,
+                  request.select === null ? undefined : request.select,
+                )(item).pipe(Effect.flatMap(unwrap)),
+              ),
+            ),
+        ),
+      );
     },
   } as unknown as WireClient<Ops, TE>;
 }

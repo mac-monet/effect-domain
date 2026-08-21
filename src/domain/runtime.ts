@@ -34,16 +34,15 @@ import {
   walkRoot,
   type WalkContext,
 } from "../walk.ts";
-import { ResultCodec } from "../schema/result.ts";
 
 class DomainInvariantError extends Error {}
 
-type PublicSchemaCodec = Schema.Codec<unknown, unknown, never, never>;
+type PublicSchemaCodec = Schema.Codec<unknown, Schema.Json, never, never>;
 
 // Only name→schema lookups are per-graph (operation names are graph-scoped).
 // AST-keyed codec/plan caches are module-global WeakMaps in their own modules.
 interface DomainCaches {
-  readonly args: Map<string, Schema.Decoder<unknown>>;
+  readonly args: Map<string, Schema.Codec<unknown, Schema.Json>>;
   readonly selection: Map<string, RootSelectionCodec>;
   readonly topology: { value: DomainTopology | undefined };
 }
@@ -68,15 +67,19 @@ function bindingConfig(
 }
 
 function publicSchemaCodec(codec: DynamicCodec): PublicSchemaCodec {
-  return codec;
+  return codec as PublicSchemaCodec;
 }
 
 // Fallback for dispatchResultSchemaDynamic: decodes any boundary failure.
 // Built lazily once — most graphs never take the fallback path.
 let gatewayResultCodecMemo: DynamicCodec | undefined;
 function gatewayResultCodec(): DynamicCodec {
-  gatewayResultCodecMemo ??= ResultCodec(Schema.Unknown, GatewayError) as DynamicCodec;
+  gatewayResultCodecMemo ??= resultCodec(Schema.Unknown, GatewayError);
   return gatewayResultCodecMemo;
+}
+
+function resultCodec(success: Schema.Top, failure: Schema.Top): DynamicCodec {
+  return unsafeCoerceCodec(Schema.toCodecJson(Schema.Result(success, failure)));
 }
 
 // AnyOperationDef keeps args contravariant as `never` so concrete operation
@@ -301,7 +304,7 @@ function makeDomainWithLayers<
     ]);
     // Success/failure services are unknown at this erased level; the public
     // interface asserts never per the responseSchema convention.
-    return ResultCodec(success, failure) as DynamicCodec;
+    return resultCodec(success, failure);
   }
 
   // Encode a live dispatch Result into the wire envelope. An encode failure
@@ -483,7 +486,7 @@ function makeDomainWithLayers<
         GatewayError,
         OperationError.schema(operationCauseSchema(name, op, operationErrorSchema)),
       ]);
-      return ResultCodec(success, failure);
+      return Schema.toCodecJson(Schema.Result(success, failure));
     },
     dispatchResultSchemaDynamic(name: string, selection: Selection | undefined) {
       return dynamicResultCodec(name, selection);

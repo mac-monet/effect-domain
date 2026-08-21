@@ -1,4 +1,4 @@
-import { Schema, SchemaAST } from "effect";
+import { Schema, SchemaAST, SchemaTransformation } from "effect";
 import type { StoredFieldDef } from "../define.ts";
 import type { NodeRegistry } from "../registry.ts";
 import {
@@ -26,7 +26,7 @@ const TRUE_LITERAL = unsafeCoerceCodec(Schema.Literal(true));
 // sharing the same AST. Pinned by tests/cross-graph-cache.test.ts (identity
 // assertions across two domains sharing a node). Only name-keyed lookups are
 // per-graph (see graph/runtime.ts). The per-field cache nests
-// fieldTypeAst → fieldName → stored args decoder.
+// fieldTypeAst → fieldName → stored args codec.
 const nodeSchemaCache = new WeakMap<SchemaAST.AST, DynamicCodec>();
 const rootSchemaCache = new WeakMap<SchemaAST.AST, DynamicCodec>();
 const perFieldSchemaCache = new WeakMap<
@@ -125,10 +125,11 @@ function getOrBuildPerField(
   if (cached) return cached;
 
   const projection = fieldSelectionProjection(fieldTypeAst);
+  const wireArgsSchema = argsSchema ? unsafeCoerceCodec(Schema.toCodecJson(argsSchema)) : undefined;
   const built =
     projection._tag === "Nested"
-      ? perFieldObjectSelection(registry, fieldName, projection.target, argsSchema)
-      : perFieldScalarSelection(fieldName, argsSchema);
+      ? perFieldObjectSelection(registry, fieldName, projection.target, wireArgsSchema)
+      : perFieldScalarSelection(fieldName, wireArgsSchema);
   argsMap.set(argsSchema, built);
   return built;
 }
@@ -166,7 +167,7 @@ function collectVariantFields(
   if (fieldDefs) {
     for (const [name, def] of Object.entries(fieldDefs)) {
       const stored = def as StoredFieldDef<unknown>;
-      // Computed args decoders are already constrained to never require
+      // Computed args codecs are already constrained to never require
       // services; selection synthesis only needs them as runtime codecs.
       const argsSchema =
         stored._kind === "computed"
@@ -330,20 +331,29 @@ function finalizeStruct(entries: Map<string, DynamicCodec>): DynamicCodec {
  * cast at the boundary concentrates the variance fudge in one place so
  * callers stay typed without leaking unknown decoding services.
  */
-export type SelectionCodec = Schema.Codec<Selection, unknown, never, never>;
-export type RootSelectionCodec = Schema.Codec<Selection | undefined, unknown, never, never>;
+export type SelectionCodec = Schema.Codec<Selection, Schema.Json, never, never>;
+export type RootSelectionCodec = Schema.Codec<Selection | undefined, Schema.Json, never, never>;
 
 export function nodeToSelectionSchema(registry: NodeRegistry, ast: SchemaAST.AST): SelectionCodec {
-  return selectionCodec(nodeToSelectionSchemaInternal(registry, ast));
+  return selectionCodec(
+    unsafeCoerceCodec(Schema.toCodecJson(nodeToSelectionSchemaInternal(registry, ast))),
+  );
 }
 
 function noSelectionSchema(reason: OpaqueRootReason | undefined): DynamicCodec {
   const suffix = reason ? `: ${reason}` : "";
   return unsafeCoerceCodec(
     Schema.Unknown.pipe(
-      Schema.refine((v): v is undefined => v === undefined, {
+      Schema.refine((value): value is null | undefined => value === null || value === undefined, {
         message: `opaque root does not accept a selection${suffix}`,
       }),
+      Schema.decodeTo(
+        Schema.Undefined,
+        SchemaTransformation.transform({
+          decode: (): undefined => undefined,
+          encode: (): null => null,
+        }) as never,
+      ),
     ),
   );
 }
@@ -354,7 +364,10 @@ export function rootToSelectionSchema(
 ): RootSelectionCodec {
   const cached = rootSchemaCache.get(ast);
   if (cached) return rootSelectionCodec(cached);
-  const built = rootToSelectionSchemaInternal(registry, ast);
+  const plan = registry.rootPlanFor(ast);
+  const selection = rootToSelectionSchemaInternal(registry, ast);
+  const built =
+    plan._tag === "OpaqueRoot" ? selection : unsafeCoerceCodec(Schema.toCodecJson(selection));
   rootSchemaCache.set(ast, built);
   return rootSelectionCodec(built);
 }

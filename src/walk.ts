@@ -334,12 +334,11 @@ function decodeAndResolve<R>(
   parent: unknown,
   selections: ReadonlySet<string>,
 ): Effect.Effect<unknown, unknown, R> {
-  // Args decode failure is caller misuse, not a domain failure: selection
-  // args are untyped in the selection syntax, the wire boundary has already
-  // validated these exact raw args (SelectionParseError on mismatch), so an
-  // in-process failure here means a bug at the call site — it dies rather
-  // than leaking an undeclared SchemaError into the operation's error channel.
-  return Effect.flatMap(Effect.orDie(Schema.decodeUnknownEffect(argsSchema)(rawArgs)), (args) =>
+  // Boundary selections are already decoded to Type values; typed in-process
+  // selections start there. Validate that side without replaying a codec's
+  // wire transformation (NumberFromString, Date, and similar codecs).
+  const typeSchema = Schema.make(SchemaAST.toType(argsSchema.ast)) as Schema.Decoder<unknown>;
+  return Effect.flatMap(Effect.orDie(Schema.decodeUnknownEffect(typeSchema)(rawArgs)), (args) =>
     resolve({ parent, args, selections }),
   );
 }

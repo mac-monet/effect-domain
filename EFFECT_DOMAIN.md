@@ -213,7 +213,7 @@ Streams (`subscribe`/`dispatchSubscription`) deliberately do not accept the flag
 
 - **R erasure in `makeBatchedField`.** The batched field's resolve function has `R = unknown` in the erased implementation; the `RequestResolver` requires `R = never`. One cast narrows R at the resolver creation boundary.
 
-- **`Schema.Decoder` for service-free decode boundaries.** `Schema.Schema<T>` erases `DecodingServices` to `unknown` (via `Top`), which poisons any `Effect.flatMap` chain with `R = unknown`. Use `Schema.Decoder<T>` instead — it defaults `DecodingServices` to `never`, keeping R clean through `decodeUnknownEffect`. Store args schemas as `Decoder<unknown>`, not `Schema<unknown>`.
+- **Service-free `Schema.Codec` values for args.** The wire client must encode Type-side args and the gateway must decode their JSON representation, so args cannot be decode-only schemas. Operation and computed-field args use `Schema.Codec<Args, unknown, never, never>`; `Schema.toCodecJson` derives their canonical JSON boundary without adding service requirements.
 
 - **Return type annotations over `as` assertions.** Where TypeScript inference fails through complex generic chains, annotate callback return types rather than casting the result. The compiler checks annotations; it trusts assertions.
 
@@ -305,15 +305,15 @@ The moment a consumer crosses an untyped boundary — JSON over HTTP, a serializ
 The **gateway contract** surfaces runtime Schemas, dispatch methods, and a canonical invocation hash, so consumers can stop reinventing parse/validate/dispatch:
 
 ```ts
-domain.argsSchema(name):                       Schema<ArgsOf<Op>>
-domain.selectionSchema(name):                  Schema<RootSelectionFor<Op["type"]>>
-domain.responseSchema(name, validatedSelect):  Schema<ResponseOf<Op>>
+domain.argsSchema(name):                       Codec<ArgsOf<Op>, Schema.Json>
+domain.selectionSchema(name):                  Codec<RootSelectionFor<Op["type"]>, Schema.Json>
+domain.responseSchema(name, validatedSelect):  Codec<ResponseOf<Op>, Schema.Json>
 domain.invocationKey({ name, args, select }, { bytes }):  string  // canonical, normalized
 ```
 
 These primitives let any consumer — HTTP, RPC, GraphQL, queue worker, sync engine, workflow orchestrator — decode untyped wire input, prepare and inspect invocations before execution, dispatch, and produce idempotency / cache keys without casts and without reinventing the loop.
 
-A third Schema, `domain.responseSchema(name, validatedSelection)`, is opt-in for typed clients that want to validate/decode the plain projected tree from the wire as a single Schema. Most consumers don't need it: the payload is plain JSON-shaped data. Response schemas are memoized by operation AST and canonicalized selection, so adapters should build them for fixed or already-validated selections; dynamic gateways should not synthesize them for unbounded user-controlled selections without their own cache/lifecycle policy.
+A third Schema, `domain.responseSchema(name, validatedSelection)`, is opt-in for typed clients that want to validate/decode the projected tree from the wire as one codec. Its Type side is the user's Effect Schema value and its encoded side is canonical `Schema.Json`, derived with `Schema.toCodecJson`. Response schemas are memoized by operation AST and canonicalized selection, so adapters should build them for fixed or already-validated selections; dynamic gateways should not synthesize them for unbounded user-controlled selections without their own cache/lifecycle policy.
 
 The dispatch methods wrap the canonical request shape and keep all expected outcomes as `Result` values:
 
@@ -340,7 +340,7 @@ domain.dispatchSubscription({ name, args, select }):
 | `OperationError<E>`   | `Result.failure`   | `Effect` failure      | 5xx (default) |
 | Defect                | `Effect.die`       | `Effect.die`          | 500           |
 
-Consumers with non-canonical wire shapes (queues that read `select` from a header, GraphQL parsers, etc.) ignore both and compose the schemas directly. Such adapters consume the graph through `Domain.erase(graph)` — the type-erased `Domain.Erased` surface (`inspect` / `argsSchema` / `execute` / `subscribe`), which requires all services provided at compile time. Note `argsSchema` decodes the **encoded** side; an adapter whose wire carries already-parsed, type-side values (GraphQL after graphql-js coercion, RPC with its own serializer) should decode through `SchemaAST.toType(argsSchema(name).ast)` instead — refinements and brands survive, encodings drop out.
+Consumers with non-canonical wire shapes (queues that read `select` from a header, GraphQL parsers, etc.) can compose the user's original schemas directly. Such adapters consume the graph through `Domain.erase(graph)` — the type-erased `Domain.Erased` surface (`inspect` / `argsSchema` / `execute` / `subscribe`), which requires all services provided at compile time. The public runtime schemas are canonical JSON codecs; adapters that already hold Type-side values should call typed `execute` / `subscribe` instead of decoding them again.
 
 The **load-bearing piece** is `selectionSchema` — a recursive function that walks a node's AST and emits a runtime Schema mirroring `SelectionFor<T>`. Mechanics already exist in the walker: AST dispatch, `Schema.suspend` for recursion, sentinel-discriminator extraction for unions. `argsSchema` trivially exposes existing data; `invocationKey` is canonical normalization plus hashing; `responseSchema` (opt-in) walks a _validated_ selection together with the AST.
 
@@ -434,16 +434,16 @@ Built for Effect v4 from day one — no v3 migration path, and v3 patterns do no
 
 **Gateway (untyped boundary contract):**
 
-- `domain.argsSchema(name)` — runtime Schema for an operation's args (load-bearing). **Implemented.**
-- `domain.selectionSchema(name)` — runtime Schema for an operation's selection (load-bearing). **Implemented.**
+- `domain.argsSchema(name)` — canonical JSON codec for an operation's args (load-bearing). **Implemented.**
+- `domain.selectionSchema(name)` — canonical JSON codec for an operation's selection (load-bearing). **Implemented.**
 - `domain.invocationKey({ name, args, select }, { bytes })` — canonical hash for idempotency / cache keys / sync-engine subscription identity. Defaults to 8 bytes; use 16 or 32 bytes for durable/global identities. The "single invocation primitive" any consumer can build on.
 - `Domain.decodeDispatchRequest(input)` — validate a full untrusted invocation envelope (`{ name, args?, select? }`). The envelope carries only client data; walker concurrency is server policy, passed as `options` to `dispatch`/`dispatchSubscription`/`prepared.execute`.
 - `domain.prepareDispatch({ name, args, select })` — validate and analyze a dynamic invocation without running resolvers; use this for production gateway policy checks before execution.
 - `domain.dispatch({ name, args, select }, options?)` — validate args/select and dispatch immediately with boundary errors and operation E in the `Result` value channel; `options.reads` wraps successes in the `{ result, reads }` envelope.
 - `Domain.orFail(domain.dispatch(...))` — move `OperationError<E>` into the Effect failure channel while leaving boundary errors as `Result.failure`.
 - `domain.dispatchSubscription(...)` / `Domain.orFailStream(...)` — streaming siblings for subscription operations.
-- `domain.responseSchema(name, validatedSelection)` — opt-in: runtime Schema for the plain projected tree. Only needed for fixed/validated selections and typed clients wanting whole-tree validation.
-- `domain.dispatchResultSchema(name, validatedSelection, operationErrorSchema)` — opt-in: runtime Schema for the full `dispatch` Result wire shape.
+- `domain.responseSchema(name, validatedSelection)` — opt-in canonical JSON codec for the projected tree. Only needed for fixed/validated selections and typed clients wanting whole-tree validation.
+- `domain.dispatchResultSchema(name, validatedSelection, operationErrorSchema)` — opt-in canonical JSON codec for the full `dispatch` Result, built from Effect's `Schema.Result`.
 
 **Composition:**
 

@@ -3,7 +3,7 @@ import { RpcTest } from "effect/unstable/rpc";
 import { describe, expect, it } from "vite-plus/test";
 import { UserNotFound } from "../examples/domain.ts";
 import { makeDomainRpc, rpc, RpcLive } from "../examples/rpc-dispatch.ts";
-import { ArgsParseError, Domain, operation, UnknownOperation } from "../src/index.ts";
+import { Domain, operation, UnknownOperation } from "../src/index.ts";
 
 const withClient = <A, E>(f: (client: ReturnType<typeof rpc.clientFrom>) => Effect.Effect<A, E>) =>
   Effect.scoped(
@@ -31,7 +31,9 @@ describe("Examples: dynamic typed RPC adapter", () => {
         client.execute({ name: "getUser", args: { nope: true }, select: { id: true } }),
       ),
     );
-    expect(Exit.findErrorOption(badArgs).pipe(Option.getOrThrow)).toBeInstanceOf(ArgsParseError);
+    expect(Exit.findErrorOption(badArgs).pipe(Option.getOrThrow)).toBeInstanceOf(
+      Schema.SchemaError,
+    );
 
     const badName = await Effect.runPromiseExit(
       withClient((client) =>

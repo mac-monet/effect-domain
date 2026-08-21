@@ -124,7 +124,7 @@ export class UnknownOperation extends Schema.TaggedError<UnknownOperation>()("Un
  */
 export class ArgsParseError extends Schema.TaggedError<ArgsParseError>()("ArgsParseError", {
   operation: Schema.String,
-  cause: Schema.Unknown,
+  cause: Schema.String,
 }) {}
 
 /**
@@ -136,7 +136,7 @@ export class ArgsParseError extends Schema.TaggedError<ArgsParseError>()("ArgsPa
  */
 export class SelectionParseError extends Schema.TaggedError<SelectionParseError>()(
   "SelectionParseError",
-  { operation: Schema.String, cause: Schema.Unknown },
+  { operation: Schema.String, cause: Schema.String },
 ) {}
 
 /**
@@ -188,18 +188,16 @@ export class OperationError<E = unknown> {
     causeSchema: C,
   ): Schema.Codec<
     OperationError<C["Type"]>,
-    {
-      readonly _tag: "OperationError";
-      readonly operation: string;
-      readonly cause: C["Encoded"];
-    },
+    Schema.Json,
     C["DecodingServices"],
     C["EncodingServices"]
   > {
-    const Wire = Schema.TaggedStruct("OperationError", {
-      operation: Schema.String,
-      cause: causeSchema,
-    });
+    const Wire = Schema.toCodecJson(
+      Schema.TaggedStruct("OperationError", {
+        operation: Schema.String,
+        cause: causeSchema,
+      }),
+    );
 
     type DecodedWire = {
       readonly _tag: "OperationError";
@@ -257,35 +255,36 @@ export const GatewayError: Schema.Schema<GatewayError> = Schema.Union([
  * surfaced as `ArgsParseError` at the boundary — silently dropping unexpected
  * args is a footgun for transports that wire things up by mistake.
  */
-export const emptyArgsSchema: Schema.Decoder<undefined> = Schema.Unknown.pipe(
+export const emptyArgsSchema = Schema.Unknown.pipe(
   Schema.refine(
-    (v): v is undefined | Record<string, never> =>
-      v === undefined ||
-      (typeof v === "object" && v !== null && !Array.isArray(v) && Object.keys(v).length === 0),
-    { message: "Operation accepts no args; expected undefined or {}." },
+    (value): value is null | undefined | Record<string, never> =>
+      value === null ||
+      value === undefined ||
+      (typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0),
+    { message: "Operation accepts no args; expected null, undefined, or {}." },
   ),
   Schema.decodeTo(
     Schema.Undefined,
-    // Transform type bridge: both accepted inputs decode to the single
-    // undefined args value; Effect Schema cannot infer that through Unknown.
     SchemaTransformation.transform({
       decode: (): undefined => undefined,
-      encode: (): undefined => undefined,
+      encode: (): null => null,
     }) as never,
   ),
 );
 
 /**
- * Resolves an operation's args Decoder, falling back to {@link emptyArgsSchema}
+ * Resolves an operation's canonical JSON args codec, falling back to
+ * {@link emptyArgsSchema}
  * for arg-less operations.
  *
- * Soundness: the user-facing `OperationDef.args` slot is constrained to
- * `Schema.Decoder<Args>` (RD = never by default) and the erased
- * `AnyOperationDef.args` mirrors that as `Schema.Decoder<unknown>`, so
- * `decodeUnknownEffect(argsSchemaFor(op))` produces `R = never` without a cast.
+ * Operation args are service-free codecs because clients encode them and
+ * gateways decode them. The returned codec always uses canonical JSON on its
+ * encoded side.
  */
-export function argsSchemaFor(op: AnyOperationDef): Schema.Decoder<unknown> {
-  return op.args ?? emptyArgsSchema;
+export function argsSchemaFor(op: AnyOperationDef): Schema.Codec<unknown, Schema.Json> {
+  return op.args
+    ? Schema.toCodecJson(op.args)
+    : (emptyArgsSchema as Schema.Codec<unknown, Schema.Json>);
 }
 
 export interface BoundaryDecoded {
@@ -316,30 +315,34 @@ export function decodeBoundary(
       );
     }
 
-    // The selection schema decode is validation only — it runs the full
-    // field-args decode so malformed args are a typed boundary error (4xx),
-    // but the *raw* selection is what flows on. The walker performs the one
-    // authoritative args decode; forwarding the decoded selection would hand
-    // it type-side args and a second decode, which fails for transforming
-    // args codecs.
+    // Decode the whole selection to its Type side once. The walker validates
+    // computed-field args against the codec's Type AST before resolving them,
+    // so transformed JSON values are never decoded twice.
+    const rawSelect = config.select === undefined ? null : config.select;
     const decodedSelect: Effect.Effect<Selection | undefined, SelectionParseError> = Effect.flatMap(
       Effect.try({
         try: () => selectionSchemaFor(config.name),
-        catch: (err) => new SelectionParseError({ operation: config.name, cause: err }),
+        catch: (err) => new SelectionParseError({ operation: config.name, cause: String(err) }),
       }),
       (selectionSchema) =>
         Effect.mapError(
-          Effect.as(
-            Schema.decodeUnknownEffect(selectionSchema)(config.select),
-            config.select as Selection | undefined,
-          ),
-          (err) => new SelectionParseError({ operation: config.name, cause: err }),
+          Schema.decodeUnknownEffect(selectionSchema)(rawSelect),
+          (err) => new SelectionParseError({ operation: config.name, cause: String(err) }),
         ),
     );
 
+    const rawArgs =
+      op.args === undefined &&
+      (config.args === undefined ||
+        (typeof config.args === "object" &&
+          config.args !== null &&
+          !Array.isArray(config.args) &&
+          Object.keys(config.args).length === 0))
+        ? null
+        : config.args;
     const decodedArgs: Effect.Effect<unknown, ArgsParseError> = Effect.mapError(
-      Schema.decodeUnknownEffect(argsSchemaFor(op))(config.args),
-      (err) => new ArgsParseError({ operation: config.name, cause: err }),
+      Schema.decodeUnknownEffect(argsSchemaFor(op))(rawArgs),
+      (err) => new ArgsParseError({ operation: config.name, cause: String(err) }),
     );
 
     return Effect.flatMap(decodedArgs, (args) =>

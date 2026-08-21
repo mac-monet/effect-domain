@@ -130,6 +130,8 @@ const handler = Effect.gen(function* () {
 });
 ```
 
+All derived wire schemas use `Schema.toCodecJson`. Define arguments, field arguments, results, and errors with ordinary Effect Schemas and work with their Type values in resolvers; `Domain.client` encodes requests to canonical JSON, while `handleDispatch` encodes successes and failures the same way. Built-ins such as `Schema.Date`, `Schema.URL`, `Schema.BigInt`, `Schema.Option`, and `Schema.Result` therefore cross plain JSON without a separate application codec. Dispatch envelopes use Effect's standard `Schema.Result(success, failure)` representation: `{ _tag: "Success", success }` or `{ _tag: "Failure", failure }`.
+
 `Domain.client(...)` is the client mirror. Give it the domain and a transport. It returns a client with the full `domain.execute` / `domain.subscribe` types: names, args, selections, and selection-dependent result types. Successes arrive as plain selected data trees. Failures decode back into live error-class instances. `Domain.transportHttp(url)` is the canonical transport: it sends each envelope as JSON with POST, and it reports wire-level failures as `Domain.TransportError`. You can supply a different `WireTransport` object for other protocols:
 
 ```ts
@@ -165,7 +167,7 @@ The dispatch ladder:
 
 `domain.responseSchema(...)` is for fixed or validated selections, for example RPC route declarations and typed clients. Dynamic gateways must not make response schemas for arbitrary user-controlled selections, unless they limit or reuse the selection set.
 
-The derived schemas are standard Effect Schemas. JSON Schema export for non-TypeScript consumers is one call. No OpenAPI pipeline is necessary:
+The derived schemas are standard Effect codecs with canonical `Schema.Json` on the encoded side. JSON Schema export for non-TypeScript consumers is one call. No OpenAPI pipeline is necessary:
 
 ```ts
 import { Schema } from "effect";

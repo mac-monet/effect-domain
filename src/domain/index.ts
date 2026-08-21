@@ -235,7 +235,7 @@ export namespace Domain {
   export interface Erased {
     inspect(): Inspection;
     /** Erased `DomainInstance.argsSchema` — throws on unknown names. */
-    argsSchema(name: string): Schema.Decoder<unknown>;
+    argsSchema(name: string): Schema.Codec<unknown, Schema.Json, never, never>;
     /** Erased array form — results in entry order, untyped. */
     execute(
       entries: ReadonlyArray<{
@@ -287,7 +287,7 @@ export namespace Domain {
    */
   export type Erasable<D> = {
     inspect(): Inspection;
-    argsSchema(name: never): Schema.Decoder<unknown>;
+    argsSchema(name: never): Schema.Codec<unknown, Schema.Json, never, never>;
     execute(entry: never, options?: never): Effect.Effect<unknown, unknown, unknown>;
     subscribe(entry: never, options?: never): Stream.Stream<unknown, unknown, unknown>;
   } & ([MissingServices<D>] extends [never]

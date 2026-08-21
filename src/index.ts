@@ -50,8 +50,6 @@ export { collectSentinels, unionDiscriminator } from "./schema/sentinels.ts";
 export type { Sentinel, UnionDiscriminator } from "./schema/sentinels.ts";
 export { canonicalizeSelection, invocationKey, selectionsEqual } from "./invocation-key.ts";
 export type { Invocation, InvocationKeyOptions } from "./invocation-key.ts";
-export { ResultCodec } from "./schema/result.ts";
-export type { WireShape } from "./schema/result.ts";
 export type {
   FieldSelection,
   RootSelectionFor,

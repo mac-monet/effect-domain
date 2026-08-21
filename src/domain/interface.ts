@@ -130,7 +130,7 @@ export interface DomainInstance<
    */
   topology(): DomainTopology;
   /**
-   * Returns the runtime args Decoder for an operation. Lazy + memoized per
+   * Returns the canonical JSON args codec for an operation. Lazy + memoized per
    * operation.
    *
    * For ops without an `args` field, returns a decoder that accepts both
@@ -138,16 +138,15 @@ export interface DomainInstance<
    * empty-args normalization, so external callers composing `argsSchema`
    * directly stay in lockstep with the boundary's behavior.
    *
-   * Returns a {@link Schema.Decoder} (not `Schema`) so `decodeUnknownEffect`
-   * produces `Effect<…, Issue, never>` — the args slot disallows
-   * service-requiring decoders, so `R = never` is sound.
+   * Argument codecs cannot require services, so both encode and decode keep
+   * `R = never`.
    *
    * Throws synchronously if `name` is not an operation on this graph — the
    * accessor is sync because Schemas are values, not Effects.
    */
   argsSchema<K extends string & keyof Ops>(
     name: K,
-  ): Schema.Decoder<DomainTypes.ExtractArgs<Ops[K]>>;
+  ): Schema.Codec<DomainTypes.ExtractArgs<Ops[K]>, Schema.Json, never, never>;
   /**
    * Returns the operation's declared error schema (`operation({ error })`),
    * or `Schema.Never` when none was declared.
@@ -187,7 +186,7 @@ export interface DomainInstance<
     name: K,
   ): Schema.Codec<
     RootSelectionFor<DomainTypes.ExtractType<Ops[K]>> | undefined,
-    unknown,
+    Schema.Json,
     never,
     never
   >;
@@ -213,7 +212,7 @@ export interface DomainInstance<
     selection?: S,
   ): Schema.Codec<
     DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
-    unknown,
+    Schema.Json,
     never,
     never
   >;
@@ -242,7 +241,7 @@ export interface DomainInstance<
       DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
       GatewayError | OperationError<F["Type"] | DomainTypes.OperationFieldWireE<Ops[K]>>
     >,
-    unknown,
+    Schema.Json,
     F["DecodingServices"],
     F["EncodingServices"]
   >;
@@ -257,7 +256,7 @@ export interface DomainInstance<
       DomainTypes.DomainRootSelectedOf<DomainTypes.ExtractType<Ops[K]>, S>,
       GatewayError | OperationError<DomainTypes.OperationWireE<Ops[K]>>
     >,
-    unknown,
+    Schema.Json,
     never,
     never
   >;
@@ -287,7 +286,7 @@ export interface DomainInstance<
     selection: Selection | undefined,
   ): Schema.Codec<
     Result.Result<unknown, GatewayError | OperationError<unknown>>,
-    unknown,
+    Schema.Json,
     never,
     never
   >;

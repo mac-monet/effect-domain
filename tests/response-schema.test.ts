@@ -563,7 +563,7 @@ describe("Domain.responseSchema", () => {
     const schema = unionGraph.responseSchema("listPetVariant", selection as Selection);
 
     const decoded = decode(schema, [
-      { _tag: "dog", name: "Rex", meow: undefined, bark: "Rex barks" },
+      { _tag: "dog", name: "Rex", bark: "Rex barks" },
     ]) as ReadonlyArray<Record<string, unknown>>;
 
     expect(decoded[0]!.meow).toBeUndefined();
@@ -599,7 +599,7 @@ describe("Domain.responseSchema", () => {
     });
     const schema = g.responseSchema("getPet", selection as Selection);
 
-    const decoded = decode(schema, { _tag: "dog", toys: undefined }) as Record<string, unknown>;
+    const decoded = decode(schema, { _tag: "dog" }) as Record<string, unknown>;
     expect(decoded.toys).toBeUndefined();
   });
 

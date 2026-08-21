@@ -56,7 +56,9 @@ export function rootToResponseSchema(
   const selectionKey = cacheKey(selection);
   const cached = getCached(rootResponseCache, ast, selectionKey);
   if (cached) return cached;
-  const built = rootToResponseSchemaInternal(registry, ast, selection);
+  const built = unsafeCoerceCodec(
+    Schema.toCodecJson(rootToResponseSchemaInternal(registry, ast, selection)),
+  );
   setCached(rootResponseCache, ast, selectionKey, built);
   return built;
 }
@@ -217,7 +219,9 @@ function noneOrValueCodec(value: DynamicCodec): DynamicCodec {
 }
 
 function cacheKey(selection: Selection | undefined): string {
-  return JSON.stringify(canonicalizeSelection(selection) ?? null);
+  return JSON.stringify(canonicalizeSelection(selection) ?? null, (_key, value) =>
+    typeof value === "bigint" ? value.toString() : value,
+  );
 }
 
 function getCached(
