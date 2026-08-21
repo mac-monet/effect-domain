@@ -381,12 +381,10 @@ export function liftBoundaryStreamToResult<A, E, R>(
       onFailure: (err): Stream.Stream<Outcome, never, R> =>
         Stream.succeed<Outcome>(Result.fail(err)),
       onSuccess: (decoded): Stream.Stream<Outcome, never, R> =>
-        Stream.map(
-          Stream.result(inner(decoded)),
-          (r): Outcome =>
-            Result.isFailure(r)
-              ? Result.fail(new OperationError(operationName, r.failure))
-              : Result.succeed(r.success),
+        Stream.map(Stream.result(inner(decoded)), (r): Outcome =>
+          Result.isFailure(r)
+            ? Result.fail(new OperationError(operationName, r.failure))
+            : Result.succeed(r.success),
         ),
     }),
   );

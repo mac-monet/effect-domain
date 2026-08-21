@@ -18,7 +18,7 @@ import { fromString as urlFromString } from "foldkit/url";
 import { Domain } from "../../../src/index.ts";
 import { domain } from "../../domain.ts";
 import { AppClient, type AppClientShape, getUser, listUsers } from "./domain-client";
-import { Flags, init, view } from "./main";
+import { Flags, init, type Message, type Model, view } from "./main";
 import { AppRoute, urlToAppRoute } from "./route";
 import { runtime } from "./server-runtime";
 
@@ -52,7 +52,7 @@ const flagsForRoute = (route: AppRoute) =>
 const statusForPage = (route: AppRoute, flags: Flags): number =>
   route._tag === "NotFound" || (route._tag === "User" && flags.preloadedUser === null) ? 404 : 200;
 
-export const renderPage = (request: Request): Promise<Server.ServerEntryResult> =>
+export const renderPage = (request: Request): Promise<Server.EntryResult> =>
   runtime.runPromise(
     Effect.gen(function* () {
       const url = Option.getOrThrowWith(
@@ -61,9 +61,9 @@ export const renderPage = (request: Request): Promise<Server.ServerEntryResult> 
       );
       const route = urlToAppRoute(url);
       const flags = yield* flagsForRoute(route);
-      const application = yield* Server.renderToString(
+      const application = yield* Server.renderToString<Model, Message, Flags>(
         { Flags, routing: {}, init, view },
-        { url: request.url, flags },
+        { url: request.url, flags, buildId: import.meta.env.FOLDKIT_BUILD_ID ?? "development" },
       );
       return Server.Rendered(application, {
         status: statusForPage(route, flags),

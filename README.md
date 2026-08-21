@@ -6,7 +6,7 @@ Define your resources, computed fields, actions, subscriptions, selections, and 
 
 The domain model is primary. Transports are projections of the model. For the full argument — with two Foldkit frontends built as projections of one domain — see [docs/projections.md](docs/projections.md).
 
-> **Status:** pre-release. The API is almost stable, but it is not frozen. Install with `npm install effect-domain`. The library requires `effect@^4.0.0-beta.101` (Effect v4).
+> **Status:** pre-release. The API is almost stable, but it is not frozen. Install with `npm install effect-domain effect@rc`. The library requires `effect@^4.0.0-rc.111` (Effect v4).
 
 ## Why
 

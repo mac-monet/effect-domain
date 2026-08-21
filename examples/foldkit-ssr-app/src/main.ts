@@ -143,14 +143,6 @@ export const Flags = S.Struct({
 });
 export type Flags = typeof Flags.Type;
 
-// Fresh (non-hydrating) renders have nothing preloaded and take the normal
-// Loading -> fetch path. Hydration never runs this: it replays the Flags
-// embedded in the server's HTML.
-export const flags: Effect.Effect<Flags> = Effect.succeed({
-  preloadedUsers: null,
-  preloadedUser: null,
-});
-
 // INIT
 
 export const init: Runtime.RoutingApplicationInit<Model, Message, Flags, AppClient> = (

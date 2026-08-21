@@ -411,7 +411,7 @@ The graph library stays focused: define schemas, attach computations, walk the d
 
 ## Effect v4
 
-Built for Effect v4 from day one — no v3 migration path, and v3 patterns do not carry over. The library depends on `effect@^4.0.0-beta.99` from npm (nothing is vendored). When an API looks unfamiliar, consult the v4 docs rather than assuming the v3 shape.
+Built for Effect v4 from day one — no v3 migration path, and v3 patterns do not carry over. The library depends on `effect@^4.0.0-rc.111` from npm (nothing is vendored). When an API looks unfamiliar, consult the v4 docs rather than assuming the v3 shape.
 
 ## API Summary
 

@@ -1,12 +1,11 @@
 import { Runtime } from "foldkit";
 
-import { AppClientHttp } from "./domain-client";
-import { ChangedUrl, ClickedLink, Flags, Model, flags, init, update, view } from "./main";
+import { AppClient, AppClientHttp } from "./domain-client";
+import { ChangedUrl, ClickedLink, Flags, type Message, Model, init, update, view } from "./main";
 
-const application = Runtime.makeApplication({
+const application = Runtime.makeApplication<Model, Message, Flags, AppClient>({
   Model,
   Flags,
-  flags,
   init,
   update,
   view,
@@ -23,4 +22,6 @@ const application = Runtime.makeApplication({
 // Adopt the server-rendered DOM: decode the embedded Flags (the domain
 // projection the server fetched), run the same `init`, and continue as a
 // normal Foldkit application.
-Runtime.hydrate(application);
+Runtime.hydrate(application, {
+  buildId: import.meta.env.FOLDKIT_BUILD_ID ?? "development",
+});

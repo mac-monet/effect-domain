@@ -27,21 +27,8 @@ wire-codec round-trip, no HTTP hop. Tests can fill it with a stub.
 
 ## Running
 
-Foldkit's server rendering is unreleased ([foldkit#863](https://github.com/foldkit/foldkit/pull/863)),
-so the foldkit packages are installed from local tarballs built off that PR
-branch (not committed). To produce them:
-
 ```sh
-cd <foldkit checkout> && git checkout ssr-863   # PR #863 branch
-pnpm install && pnpm --filter foldkit --filter @foldkit/vite-plugin build
-pnpm --filter foldkit exec pnpm pack --out <this dir>/vendor/foldkit.tgz
-pnpm --filter @foldkit/vite-plugin exec pnpm pack --out <this dir>/vendor/foldkit-vite-plugin.tgz
-```
-
-Then:
-
-```sh
-bun install
-bun run build    # client bundle -> dist/client
-bun run start    # http://localhost:3000
+vp install
+vp run build    # client bundle -> dist/client
+vp run start    # http://localhost:3000
 ```
