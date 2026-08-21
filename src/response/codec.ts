@@ -166,13 +166,15 @@ function nodeToResponseSchema(
       if (field.fieldAsts.length === 0) {
         throw new Error(`responseSchema: unknown selection field "${field.entry.fieldName}"`);
       }
-      const built = unionCodec(
-        field.fieldAsts.map((fieldAst) => fieldSuccessSchema(registry, fieldAst, field)),
+      const members = field.fieldAsts.map((fieldAst) =>
+        fieldSuccessSchema(registry, fieldAst, field),
       );
+      const built =
+        members.length <= 1
+          ? unionCodec(members)
+          : jsonCodec(Schema.Union(members.map((member) => Schema.toType(member)) as never));
       // A slot admitting `undefined` (field missing on some union variant, or
-      // a genuinely optional value) must be an optional key: struct encode
-      // drops undefined-valued keys, so a required key could not decode its
-      // own encode output.
+      // a genuinely optional value) must accept an absent key on decode.
       const admitsUndefined = field.fieldAsts.some((fieldAst) => admitsUndefinedAst(fieldAst));
       fields[field.entry.outputKey] = admitsUndefined ? optionalCodec(built) : built;
     }

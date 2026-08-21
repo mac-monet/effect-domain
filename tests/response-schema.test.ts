@@ -460,6 +460,29 @@ describe("Domain.responseSchema", () => {
     expect((decode(schema, { value: 1 }) as { value: unknown }).value).toBe(1);
   });
 
+  it("uses Effect's canonical JSON ordering for fields shared across union variants", () => {
+    const Text = node(
+      "CanonicalUnionText",
+      Schema.Struct({ _tag: Schema.Literal("text"), value: Schema.String }),
+      {},
+    );
+    const Count = node(
+      "CanonicalUnionCount",
+      Schema.Struct({ _tag: Schema.Literal("count"), value: Schema.BigInt }),
+      {},
+    );
+    const g = Domain.make({
+      get: operation({
+        type: Schema.Union([Text, Count]),
+        resolve: () => Effect.succeed({ _tag: "count" as const, value: 123n }),
+      }),
+    });
+
+    const schema = g.responseSchema("get", { value: true });
+
+    expect((decode(schema, { value: "123" }) as { value: unknown }).value).toBe(123n);
+  });
+
   it("throws for unknown fields in unvalidated selections", () => {
     expect(() => domain.responseSchema("getUser", { nope: true } as Selection)).toThrow(
       /unknown selection field "nope"/,
@@ -676,6 +699,9 @@ describe("Domain.responseSchema", () => {
     });
 
     const selection = { id: true, profile: { select: { bio: true } } } as const;
+    expect(encode(g.responseSchema("getUser", selection), { id: "1", profile: undefined })).toEqual(
+      { id: "1", profile: null },
+    );
     const encoded = await Effect.runPromise(
       g.handleDispatch({ name: "getUser", select: selection }),
     );

@@ -5,6 +5,7 @@ import {
   arrayCodec,
   type DynamicJsonCodec,
   jsonCodec,
+  jsonUnknownCodec,
   optionalCodec,
   structCodec,
   suspendCodec,
@@ -203,7 +204,7 @@ function strictRecord(
   inner: DynamicJsonCodec,
   validateOutputKeys = false,
 ): DynamicJsonCodec {
-  const validated = Schema.Unknown.pipe(
+  const validated = jsonUnknownCodec.pipe(
     Schema.refine(
       (v): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v),
       {

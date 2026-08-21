@@ -135,6 +135,10 @@ describe("Unit 9: selectionSchema — plain struct", () => {
     expect(decodeFails(schema, { id: 1 })).toBe(true);
   });
 
+  it("rejects non-JSON selection inputs", () => {
+    expect(decodeFails(userGraph.selectionSchema("getUser"), new Date())).toBe(true);
+  });
+
   it("accepts { args } for scalar fields with args (disjoint from true)", () => {
     const schema = userGraph.selectionSchema("getUser");
     expect(decodeOk(schema, { greeting: true })).toEqual({ greeting: true });
