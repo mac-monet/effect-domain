@@ -165,9 +165,9 @@ src/
 │   └── codec.ts         # response codec derivation
 └── schema/
     ├── ast.ts           # shared Schema AST helpers (raw-primary unwrapSuspend)
-    ├── sentinels.ts     # union-member sentinel extraction + candidate index
-    ├── codec.ts         # isolated unsafe codec-widening helpers
-    └── result.ts        # Result codec construction
+    ├── ast-public.ts    # canonical AST helpers re-exported for adapters
+    ├── dynamic-json.ts  # JSON-native dynamic codec composition
+    └── sentinels.ts     # union-member sentinel extraction + candidate index
 ```
 
 ## The Node Registry
