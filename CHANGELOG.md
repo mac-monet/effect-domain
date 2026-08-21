@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 ### Added
 
@@ -26,7 +26,7 @@
 ### Changed
 
 - **Effect moved from beta to the 4.0 release candidate.** The peer range is
-  now `^4.0.0-rc.109`. The RC renamed `Schema.TaggedErrorClass` back to
+  now `^4.0.0-rc.111`. The RC renamed `Schema.TaggedErrorClass` back to
   `Schema.TaggedError`; the library's error classes follow it. Applications
   on `effect@beta` must upgrade with the library.
 

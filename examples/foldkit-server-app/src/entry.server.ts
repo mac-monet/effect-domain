@@ -38,7 +38,7 @@ const flagsForRoute = (route: AppRoute) =>
 const statusForPage = (route: AppRoute, flags: Flags): number =>
   route._tag === "NotFound" || (route._tag === "User" && flags.user === null) ? 404 : 200;
 
-const redirect = (location: string): Server.ServerEntryResult =>
+const redirect = (location: string): Server.EntryResult =>
   Server.Responded(new Response(null, { status: 303, headers: { location } }));
 
 // POST /users from the native create form: run the operation, then redirect
@@ -79,7 +79,7 @@ const renderRoute = (requestUrl: string) =>
     });
   });
 
-export const renderPage = (request: Request): Promise<Server.ServerEntryResult> =>
+export const renderPage = (request: Request): Promise<Server.EntryResult> =>
   runtime.runPromise(
     request.method === "POST" && new URL(request.url).pathname === "/users"
       ? handleCreate(request)

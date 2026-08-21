@@ -5,6 +5,10 @@
     "moduleDetection": "force",
     "module": "esnext",
     "moduleResolution": "bundler",
+    "paths": {
+      "effect": ["../../node_modules/effect"],
+      "effect/*": ["../../node_modules/effect/*"]
+    },
     "types": ["bun"],
     "strict": true,
     "exactOptionalPropertyTypes": true,

@@ -21,18 +21,7 @@ projection — serialized as HTML instead of JSON.
 
 ## Running
 
-Foldkit's server rendering is unreleased, so `foldkit` installs from a local
-tarball built off the PR branch (not committed). To produce it:
-
 ```sh
-cd <foldkit checkout> && git checkout ssr-863   # PR #863 branch
-pnpm install && pnpm --filter foldkit build
-pnpm --filter foldkit exec pnpm pack --out <this dir>/vendor/foldkit.tgz
-```
-
-Then:
-
-```sh
-bun install
-bun run start    # http://localhost:3000
+vp install
+vp run start    # http://localhost:3000
 ```
