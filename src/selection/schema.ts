@@ -3,19 +3,20 @@ import type { StoredFieldDef } from "../define.ts";
 import type { NodeRegistry } from "../registry.ts";
 import {
   arrayCodec,
-  type DynamicCodec,
+  type DynamicJsonCodec,
+  jsonCodec,
   optionalCodec,
   structCodec,
   suspendCodec,
   unionCodec,
-  unsafeCoerceCodec,
-} from "../schema/codec.ts";
+  unsafeJsonCodec,
+} from "../schema/dynamic-json.ts";
 import { fieldSelectionProjection, type OpaqueRootReason } from "./projection.ts";
 import { unwrapSuspend } from "../schema/ast.ts";
 import { collectSentinels } from "../schema/sentinels.ts";
 import { duplicateSelectionOutputKeys, type Selection } from "./syntax.ts";
 
-const TRUE_LITERAL = unsafeCoerceCodec(Schema.Literal(true));
+const TRUE_LITERAL = jsonCodec(Schema.Literal(true));
 
 // Selection codecs derive purely from AST identity, so caches are
 // module-global WeakMaps: entries are shared across graphs that reference the
@@ -27,11 +28,11 @@ const TRUE_LITERAL = unsafeCoerceCodec(Schema.Literal(true));
 // assertions across two domains sharing a node). Only name-keyed lookups are
 // per-graph (see graph/runtime.ts). The per-field cache nests
 // fieldTypeAst → fieldName → stored args codec.
-const nodeSchemaCache = new WeakMap<SchemaAST.AST, DynamicCodec>();
-const rootSchemaCache = new WeakMap<SchemaAST.AST, DynamicCodec>();
+const nodeSchemaCache = new WeakMap<SchemaAST.AST, DynamicJsonCodec>();
+const rootSchemaCache = new WeakMap<SchemaAST.AST, DynamicJsonCodec>();
 const perFieldSchemaCache = new WeakMap<
   SchemaAST.AST,
-  Map<string, Map<DynamicCodec | undefined, DynamicCodec>>
+  Map<string, Map<Schema.Top | undefined, DynamicJsonCodec>>
 >();
 
 function isUnionDiscriminated(registry: NodeRegistry, union: SchemaAST.Union): boolean {
@@ -51,9 +52,9 @@ function isUnionDiscriminated(registry: NodeRegistry, union: SchemaAST.Union): b
   return true;
 }
 
-function withArrayForm(structSchema: DynamicCodec, implicitAlias: string): DynamicCodec {
+function withArrayForm(structSchema: DynamicJsonCodec, implicitAlias: string): DynamicJsonCodec {
   const arrayElement = unionCodec([TRUE_LITERAL, structSchema]);
-  const arrayForm = unsafeCoerceCodec(
+  const arrayForm = unsafeJsonCodec(
     arrayCodec(arrayElement).pipe(
       Schema.refine(
         (arr: unknown): arr is ReadonlyArray<unknown> =>
@@ -66,7 +67,7 @@ function withArrayForm(structSchema: DynamicCodec, implicitAlias: string): Dynam
   return unionCodec([TRUE_LITERAL, structSchema, arrayForm]);
 }
 
-function strictStruct(fields: Record<string, DynamicCodec>): DynamicCodec {
+function strictStruct(fields: Record<string, DynamicJsonCodec>): DynamicJsonCodec {
   const allowed = new Set(Object.keys(fields));
   const inner = structCodec(fields);
   return strictRecord(allowed, inner);
@@ -74,10 +75,10 @@ function strictStruct(fields: Record<string, DynamicCodec>): DynamicCodec {
 
 function perFieldScalarSelection(
   fieldName: string,
-  argsSchema: DynamicCodec | undefined,
-): DynamicCodec {
-  const fields: Record<string, DynamicCodec> = {
-    alias: optionalCodec(unsafeCoerceCodec(Schema.String)),
+  argsSchema: DynamicJsonCodec | undefined,
+): DynamicJsonCodec {
+  const fields: Record<string, DynamicJsonCodec> = {
+    alias: optionalCodec(jsonCodec(Schema.String)),
   };
   if (argsSchema) {
     fields.args = optionalCodec(argsSchema);
@@ -90,13 +91,13 @@ function perFieldObjectSelection(
   registry: NodeRegistry,
   fieldName: string,
   targetAst: SchemaAST.AST,
-  argsSchema: DynamicCodec | undefined,
-): DynamicCodec {
+  argsSchema: DynamicJsonCodec | undefined,
+): DynamicJsonCodec {
   const childSchema = nodeToSelectionSchemaInternal(registry, targetAst);
 
-  const fields: Record<string, DynamicCodec> = {
+  const fields: Record<string, DynamicJsonCodec> = {
     select: optionalCodec(childSchema),
-    alias: optionalCodec(unsafeCoerceCodec(Schema.String)),
+    alias: optionalCodec(jsonCodec(Schema.String)),
   };
   if (argsSchema) {
     fields.args = optionalCodec(argsSchema);
@@ -109,8 +110,8 @@ function getOrBuildPerField(
   registry: NodeRegistry,
   fieldName: string,
   fieldTypeAst: SchemaAST.AST,
-  argsSchema: DynamicCodec | undefined,
-): DynamicCodec {
+  argsSchema: Schema.Top | undefined,
+): DynamicJsonCodec {
   let fieldsMap = perFieldSchemaCache.get(fieldTypeAst);
   if (!fieldsMap) {
     fieldsMap = new Map();
@@ -125,7 +126,7 @@ function getOrBuildPerField(
   if (cached) return cached;
 
   const projection = fieldSelectionProjection(fieldTypeAst);
-  const wireArgsSchema = argsSchema ? unsafeCoerceCodec(Schema.toCodecJson(argsSchema)) : undefined;
+  const wireArgsSchema = argsSchema ? jsonCodec(argsSchema) : undefined;
   const built =
     projection._tag === "Nested"
       ? perFieldObjectSelection(registry, fieldName, projection.target, wireArgsSchema)
@@ -137,7 +138,7 @@ function getOrBuildPerField(
 function collectVariantFields(
   registry: NodeRegistry,
   variantAst: SchemaAST.Objects,
-  out: Map<string, Set<DynamicCodec>>,
+  out: Map<string, Set<DynamicJsonCodec>>,
   childTypesByName: Map<string, Set<SchemaAST.AST | "scalar">> | undefined,
 ): void {
   const fieldDefs = registry.fieldDefsFor(variantAst);
@@ -169,10 +170,7 @@ function collectVariantFields(
       const stored = def as StoredFieldDef<unknown>;
       // Computed args codecs are already constrained to never require
       // services; selection synthesis only needs them as runtime codecs.
-      const argsSchema =
-        stored._kind === "computed"
-          ? (stored.args as unknown as DynamicCodec | undefined)
-          : undefined;
+      const argsSchema = stored._kind === "computed" ? stored.args : undefined;
       const schema = getOrBuildPerField(registry, name, def.type.ast, argsSchema);
       let set = out.get(name);
       if (!set) {
@@ -202,9 +200,9 @@ function selectionOutputKeyIssues(v: Record<string, unknown>): Array<Schema.Filt
 
 function strictRecord(
   allowed: ReadonlySet<string>,
-  inner: DynamicCodec,
+  inner: DynamicJsonCodec,
   validateOutputKeys = false,
-): DynamicCodec {
+): DynamicJsonCodec {
   const validated = Schema.Unknown.pipe(
     Schema.refine(
       (v): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v),
@@ -238,14 +236,17 @@ function strictRecord(
       }),
     ),
   );
-  return unsafeCoerceCodec(validated.pipe(Schema.decodeTo(inner)));
+  return unsafeJsonCodec(validated.pipe(Schema.decodeTo(inner)));
 }
 
-function nodeToSelectionSchemaInternal(registry: NodeRegistry, ast: SchemaAST.AST): DynamicCodec {
+function nodeToSelectionSchemaInternal(
+  registry: NodeRegistry,
+  ast: SchemaAST.AST,
+): DynamicJsonCodec {
   const cached = nodeSchemaCache.get(ast);
   if (cached) return cached;
 
-  const realized: { value?: DynamicCodec } = {};
+  const realized: { value?: DynamicJsonCodec } = {};
   const placeholder = suspendCodec(() => {
     if (!realized.value) {
       throw new Error("selectionSchema: placeholder forced before realization");
@@ -261,14 +262,14 @@ function nodeToSelectionSchemaInternal(registry: NodeRegistry, ast: SchemaAST.AS
   return built;
 }
 
-function buildSelectionSchema(registry: NodeRegistry, typeAst: SchemaAST.AST): DynamicCodec {
+function buildSelectionSchema(registry: NodeRegistry, typeAst: SchemaAST.AST): DynamicJsonCodec {
   if (SchemaAST.isUnion(typeAst)) {
     if (!isUnionDiscriminated(registry, typeAst)) {
       throw new Error(
         "selectionSchema: cannot derive a selection Schema for a non-sentinel-discriminated union",
       );
     }
-    const fieldsByName = new Map<string, Set<DynamicCodec>>();
+    const fieldsByName = new Map<string, Set<DynamicJsonCodec>>();
     // Tracks each field's selection projection per variant — including a
     // "scalar" marker, so a field that is sub-selectable on one variant but
     // scalar on another is rejected as ambiguous rather than accepted at the
@@ -286,7 +287,7 @@ function buildSelectionSchema(registry: NodeRegistry, typeAst: SchemaAST.AST): D
         );
       }
     }
-    const merged = new Map<string, DynamicCodec>();
+    const merged = new Map<string, DynamicJsonCodec>();
     for (const [name, schemas] of fieldsByName) {
       merged.set(name, unionCodec(Array.from(schemas)));
     }
@@ -294,9 +295,9 @@ function buildSelectionSchema(registry: NodeRegistry, typeAst: SchemaAST.AST): D
   }
 
   if (SchemaAST.isObjects(typeAst)) {
-    const fieldsByName = new Map<string, Set<DynamicCodec>>();
+    const fieldsByName = new Map<string, Set<DynamicJsonCodec>>();
     collectVariantFields(registry, typeAst, fieldsByName, undefined);
-    const merged = new Map<string, DynamicCodec>();
+    const merged = new Map<string, DynamicJsonCodec>();
     for (const [name, schemas] of fieldsByName) {
       merged.set(name, unionCodec(Array.from(schemas)));
     }
@@ -313,8 +314,8 @@ function buildSelectionSchema(registry: NodeRegistry, typeAst: SchemaAST.AST): D
   return finalizeStruct(new Map());
 }
 
-function finalizeStruct(entries: Map<string, DynamicCodec>): DynamicCodec {
-  const fields: Record<string, DynamicCodec> = {};
+function finalizeStruct(entries: Map<string, DynamicJsonCodec>): DynamicJsonCodec {
+  const fields: Record<string, DynamicJsonCodec> = {};
   const allowed = new Set<string>();
   for (const [name, schema] of entries) {
     fields[name] = optionalCodec(schema);
@@ -325,9 +326,9 @@ function finalizeStruct(entries: Map<string, DynamicCodec>): DynamicCodec {
 }
 
 /**
- * Builds a `Codec<Selection, unknown, never, never>` mirroring the runtime
+ * Builds a `Codec<Selection, Schema.Json, never, never>` mirroring the runtime
  * selection shape for a node AST. Internal construction uses an erased
- * `DynamicCodec` (necessary for variance through the recursive AST walk); the
+ * `DynamicJsonCodec` (necessary for variance through the recursive AST walk); the
  * cast at the boundary concentrates the variance fudge in one place so
  * callers stay typed without leaking unknown decoding services.
  */
@@ -335,14 +336,12 @@ export type SelectionCodec = Schema.Codec<Selection, Schema.Json, never, never>;
 export type RootSelectionCodec = Schema.Codec<Selection | undefined, Schema.Json, never, never>;
 
 export function nodeToSelectionSchema(registry: NodeRegistry, ast: SchemaAST.AST): SelectionCodec {
-  return selectionCodec(
-    unsafeCoerceCodec(Schema.toCodecJson(nodeToSelectionSchemaInternal(registry, ast))),
-  );
+  return selectionCodec(nodeToSelectionSchemaInternal(registry, ast));
 }
 
-function noSelectionSchema(reason: OpaqueRootReason | undefined): DynamicCodec {
+function noSelectionSchema(reason: OpaqueRootReason | undefined): DynamicJsonCodec {
   const suffix = reason ? `: ${reason}` : "";
-  return unsafeCoerceCodec(
+  return unsafeJsonCodec(
     Schema.Unknown.pipe(
       Schema.refine((value): value is null | undefined => value === null || value === undefined, {
         message: `opaque root does not accept a selection${suffix}`,
@@ -364,15 +363,15 @@ export function rootToSelectionSchema(
 ): RootSelectionCodec {
   const cached = rootSchemaCache.get(ast);
   if (cached) return rootSelectionCodec(cached);
-  const plan = registry.rootPlanFor(ast);
-  const selection = rootToSelectionSchemaInternal(registry, ast);
-  const built =
-    plan._tag === "OpaqueRoot" ? selection : unsafeCoerceCodec(Schema.toCodecJson(selection));
+  const built = rootToSelectionSchemaInternal(registry, ast);
   rootSchemaCache.set(ast, built);
   return rootSelectionCodec(built);
 }
 
-function rootToSelectionSchemaInternal(registry: NodeRegistry, ast: SchemaAST.AST): DynamicCodec {
+function rootToSelectionSchemaInternal(
+  registry: NodeRegistry,
+  ast: SchemaAST.AST,
+): DynamicJsonCodec {
   const plan = registry.rootPlanFor(ast);
   switch (plan._tag) {
     // Node roots require an explicit selection — there is no implicit
@@ -387,13 +386,13 @@ function rootToSelectionSchemaInternal(registry: NodeRegistry, ast: SchemaAST.AS
   }
 }
 
-function selectionCodec(codec: DynamicCodec): SelectionCodec {
+function selectionCodec(codec: DynamicJsonCodec): SelectionCodec {
   // Public boundary: the dynamic schema mirrors Selection at runtime, while the
   // recursive builder erases exact shape internally.
   return codec as unknown as SelectionCodec;
 }
 
-function rootSelectionCodec(codec: DynamicCodec): RootSelectionCodec {
+function rootSelectionCodec(codec: DynamicJsonCodec): RootSelectionCodec {
   // Public boundary: scalar (opaque) roots allow omitted selection; node
   // roots require one.
   return codec as unknown as RootSelectionCodec;

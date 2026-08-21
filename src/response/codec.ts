@@ -1,15 +1,15 @@
 import { Schema, SchemaAST } from "effect";
 import {
   arrayCodec,
-  codecFromAst,
-  type DynamicCodec,
+  type DynamicJsonCodec,
+  jsonCodec,
+  jsonCodecFromTypeAst,
+  jsonUnknownCodec,
   optionalCodec,
   structCodec,
   suspendCodec,
   unionCodec,
-  unsafeCoerceCodec,
-  unknownCodec,
-} from "../schema/codec.ts";
+} from "../schema/dynamic-json.ts";
 import { canonicalizeSelection } from "../invocation-key.ts";
 import type { NodeRegistry } from "../registry.ts";
 import type { RootPlan } from "../selection/projection.ts";
@@ -31,14 +31,14 @@ import {
 // tests/cross-graph-cache.test.ts). The inner per-AST map is keyed by canonical selection
 // JSON and unbounded — adapters synthesizing schemas for user-controlled
 // selections own that lifecycle (see responseSchema docs).
-const nodeResponseCache = new WeakMap<SchemaAST.AST, Map<string, DynamicCodec>>();
-const rootResponseCache = new WeakMap<SchemaAST.AST, Map<string, DynamicCodec>>();
+const nodeResponseCache = new WeakMap<SchemaAST.AST, Map<string, DynamicJsonCodec>>();
+const rootResponseCache = new WeakMap<SchemaAST.AST, Map<string, DynamicJsonCodec>>();
 
 export function rootToResponseSchema(
   registry: NodeRegistry,
   ast: SchemaAST.AST,
   selection: Selection | undefined,
-): DynamicCodec {
+): DynamicJsonCodec {
   // Validate before the cache: `{}` and `undefined` canonicalize to the same
   // cache key, but they are not interchangeable — `undefined` is legal only
   // on opaque roots, `{}` only on node roots — so a cached codec must not
@@ -56,9 +56,7 @@ export function rootToResponseSchema(
   const selectionKey = cacheKey(selection);
   const cached = getCached(rootResponseCache, ast, selectionKey);
   if (cached) return cached;
-  const built = unsafeCoerceCodec(
-    Schema.toCodecJson(rootToResponseSchemaInternal(registry, ast, selection)),
-  );
+  const built = rootToResponseSchemaInternal(registry, ast, selection);
   setCached(rootResponseCache, ast, selectionKey, built);
   return built;
 }
@@ -67,7 +65,7 @@ function rootToResponseSchemaInternal(
   registry: NodeRegistry,
   ast: SchemaAST.AST,
   selection: Selection | undefined,
-): DynamicCodec {
+): DynamicJsonCodec {
   const plan = registry.rootPlanFor(ast);
 
   if (selection !== undefined && plan._tag === "OpaqueRoot") {
@@ -82,7 +80,7 @@ function rootBaseResponseSchema(
   registry: NodeRegistry,
   plan: RootPlan,
   selection: Selection | undefined,
-): DynamicCodec {
+): DynamicJsonCodec {
   switch (plan._tag) {
     case "ObjectRoot":
       return nodeToResponseSchema(registry, plan.schemaTarget, requireSelection(selection));
@@ -91,7 +89,7 @@ function rootBaseResponseSchema(
         rootElementToResponseSchema(registry, plan.element, requireSelection(selection)),
       );
     case "OpaqueRoot":
-      return codecFromAst(plan.codecAst);
+      return jsonCodecFromTypeAst(plan.codecAst);
   }
 }
 
@@ -111,7 +109,7 @@ function rootElementToResponseSchema(
   registry: NodeRegistry,
   ast: SchemaAST.AST,
   selection: Selection,
-): DynamicCodec {
+): DynamicJsonCodec {
   const typeAst = unwrapSuspend(ast);
   if (isNullable(typeAst)) {
     return noneOrValueCodec(
@@ -120,7 +118,7 @@ function rootElementToResponseSchema(
   }
   if (SchemaAST.isArrays(typeAst)) {
     const inner = typeAst.rest[0];
-    if (!inner) return arrayCodec(unknownCodec);
+    if (!inner) return arrayCodec(jsonUnknownCodec);
     return arrayCodec(rootElementToResponseSchema(registry, inner, selection));
   }
   return nodeToResponseSchema(registry, typeAst, selection);
@@ -130,12 +128,12 @@ function nodeToResponseSchema(
   registry: NodeRegistry,
   ast: SchemaAST.AST,
   selection: Selection,
-): DynamicCodec {
+): DynamicJsonCodec {
   const selectionKey = cacheKey(selection);
   const cached = getCached(nodeResponseCache, ast, selectionKey);
   if (cached) return cached;
 
-  const realized: { value?: DynamicCodec } = {};
+  const realized: { value?: DynamicJsonCodec } = {};
   const placeholder = suspendCodec(() => {
     if (!realized.value) {
       throw new Error("responseSchema: placeholder forced before realization");
@@ -148,7 +146,7 @@ function nodeToResponseSchema(
   // resolve; if the build throws (unknown field, duplicate output key), the
   // never-realized placeholder must not survive as a poisoned cache entry.
   try {
-    const fields: Record<string, DynamicCodec> = Object.create(null);
+    const fields: Record<string, DynamicJsonCodec> = Object.create(null);
     let plan: SelectedNodePlan;
     try {
       plan = planSelectedNode(registry, ast, selection);
@@ -192,15 +190,15 @@ function fieldSuccessSchema(
   registry: NodeRegistry,
   fieldAst: SchemaAST.AST,
   field: SelectedFieldPlan,
-): DynamicCodec {
+): DynamicJsonCodec {
   const sub = field.entry.select;
-  if (!sub) return codecFromAst(fieldAst);
+  if (!sub) return jsonCodecFromTypeAst(fieldAst);
 
   const typeAst = unwrapSuspend(fieldAst);
-  if (SchemaAST.isUndefined(typeAst)) return codecFromAst(typeAst);
+  if (SchemaAST.isUndefined(typeAst)) return jsonCodecFromTypeAst(typeAst);
   if (SchemaAST.isArrays(typeAst)) {
     const inner = typeAst.rest[0];
-    if (!inner) return arrayCodec(unknownCodec);
+    if (!inner) return arrayCodec(jsonUnknownCodec);
     const innerSchema = rootElementToResponseSchema(registry, inner, sub);
     return arrayCodec(innerSchema);
   }
@@ -214,8 +212,8 @@ function fieldSuccessSchema(
 
 // The walker normalizes nullish sub-selected values to `null` (plain data,
 // JSON-native), so the nullable slot on the wire is a bare null.
-function noneOrValueCodec(value: DynamicCodec): DynamicCodec {
-  return unionCodec([unsafeCoerceCodec(Schema.Null), value]);
+function noneOrValueCodec(value: DynamicJsonCodec): DynamicJsonCodec {
+  return unionCodec([jsonCodec(Schema.Null), value]);
 }
 
 function cacheKey(selection: Selection | undefined): string {
@@ -225,18 +223,18 @@ function cacheKey(selection: Selection | undefined): string {
 }
 
 function getCached(
-  cache: WeakMap<SchemaAST.AST, Map<string, DynamicCodec>>,
+  cache: WeakMap<SchemaAST.AST, Map<string, DynamicJsonCodec>>,
   ast: SchemaAST.AST,
   selectionKey: string,
-): DynamicCodec | undefined {
+): DynamicJsonCodec | undefined {
   return cache.get(ast)?.get(selectionKey);
 }
 
 function setCached(
-  cache: WeakMap<SchemaAST.AST, Map<string, DynamicCodec>>,
+  cache: WeakMap<SchemaAST.AST, Map<string, DynamicJsonCodec>>,
   ast: SchemaAST.AST,
   selectionKey: string,
-  schema: DynamicCodec,
+  schema: DynamicJsonCodec,
 ): void {
   let bySelection = cache.get(ast);
   if (!bySelection) {

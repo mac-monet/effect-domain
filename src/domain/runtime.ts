@@ -1,6 +1,6 @@
 import { Effect, type Layer, Result, Schema, Stream } from "effect";
 import type { AnyOperationDef } from "../define.ts";
-import { type DynamicCodec, unsafeCoerceCodec } from "../schema/codec.ts";
+import { type DynamicJsonCodec, jsonCodec } from "../schema/dynamic-json.ts";
 import {
   argsSchemaFor,
   type BoundaryDecoded,
@@ -37,8 +37,6 @@ import {
 
 class DomainInvariantError extends Error {}
 
-type PublicSchemaCodec = Schema.Codec<unknown, Schema.Json, never, never>;
-
 // Only name→schema lookups are per-graph (operation names are graph-scoped).
 // AST-keyed codec/plan caches are module-global WeakMaps in their own modules.
 interface DomainCaches {
@@ -66,20 +64,16 @@ function bindingConfig(
   };
 }
 
-function publicSchemaCodec(codec: DynamicCodec): PublicSchemaCodec {
-  return codec as PublicSchemaCodec;
-}
-
 // Fallback for dispatchResultSchemaDynamic: decodes any boundary failure.
 // Built lazily once — most graphs never take the fallback path.
-let gatewayResultCodecMemo: DynamicCodec | undefined;
-function gatewayResultCodec(): DynamicCodec {
+let gatewayResultCodecMemo: DynamicJsonCodec | undefined;
+function gatewayResultCodec(): DynamicJsonCodec {
   gatewayResultCodecMemo ??= resultCodec(Schema.Unknown, GatewayError);
   return gatewayResultCodecMemo;
 }
 
-function resultCodec(success: Schema.Top, failure: Schema.Top): DynamicCodec {
-  return unsafeCoerceCodec(Schema.toCodecJson(Schema.Result(success, failure)));
+function resultCodec(success: Schema.Top, failure: Schema.Top): DynamicJsonCodec {
+  return jsonCodec(Schema.Result(success, failure));
 }
 
 // AnyOperationDef keeps args contravariant as `never` so concrete operation
@@ -285,10 +279,10 @@ function makeDomainWithLayers<
   // and handleSubscription. Unknown names fall back to the gateway codec,
   // which decodes exactly what the server can produce for them (such
   // dispatches fail at the boundary with a GatewayError).
-  function dynamicResultCodec(name: string, selection: Selection | undefined): DynamicCodec {
+  function dynamicResultCodec(name: string, selection: Selection | undefined): DynamicJsonCodec {
     const op = Object.hasOwn(ops, name) ? ops[name]! : undefined;
     if (op === undefined) return gatewayResultCodec();
-    let success: DynamicCodec;
+    let success: DynamicJsonCodec;
     try {
       success = rootToResponseSchema(registry, op.type.ast, selection);
     } catch {
@@ -296,7 +290,7 @@ function makeDomainWithLayers<
       // failure side must still round-trip (the boundary rejects such
       // selections as GatewayErrors), but a success produced despite it must
       // not silently cross the wire un-encoded — Never dies at encode time.
-      success = unsafeCoerceCodec(Schema.Never);
+      success = jsonCodec(Schema.Never);
     }
     const failure = Schema.Union([
       GatewayError,
@@ -452,14 +446,14 @@ function makeDomainWithLayers<
       return schema;
     },
     selectionSchema(name: string) {
-      return publicSchemaCodec(selectionSchemaFor(name));
+      return selectionSchemaFor(name);
     },
     responseSchema(name: string, selection: Selection | undefined) {
       if (!Object.hasOwn(ops, name)) {
         throw new Error(`Unknown operation: ${name}`);
       }
       const op = ops[name]!;
-      return publicSchemaCodec(rootToResponseSchema(registry, op.type.ast, selection));
+      return rootToResponseSchema(registry, op.type.ast, selection);
     },
     errorSchema(name: string) {
       if (!Object.hasOwn(ops, name)) {
